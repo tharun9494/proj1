@@ -1,13 +1,15 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: "./", // Ensures proper routing for Vite
-  build: {
-    outDir: "dist",
+  optimizeDeps: {
+    exclude: ['lucide-react'],
   },
-  server: {
-    historyApiFallback: true, // Handles SPA routing in development
-  }
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
 });
