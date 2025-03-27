@@ -1,12 +1,5 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
-import App from '../src/App';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
-  </React.StrictMode>
-);
+export default function handler(req: VercelRequest, res: VercelResponse) {
+  res.status(200).json({ message: 'Hello from Vercel!' });
+}
