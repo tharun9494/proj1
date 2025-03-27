@@ -8,6 +8,6 @@ export default defineConfig({
     outDir: "dist",
   },
   server: {
-    historyApiFallback: true, // Handles SPA routing in development
+    // Vite handles SPA routing automatically
   }
 });
