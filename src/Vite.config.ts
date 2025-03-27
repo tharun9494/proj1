@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  base: "./", // Ensures proper routing for Vite
+  base: "/", // Use absolute path for Vercel deployment
   build: {
     outDir: "dist",
   },
