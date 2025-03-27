@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.email == 'ontimittatharun2002@gmail.com';
+    }
+
+    // User collection rules
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Menu items collection rules
+    match /menuItems/{itemId} {
+      allow read: if true;  // Anyone can read menu items
+      allow list: if true;  // Allow listing items
+      allow create, update, delete: if isAdmin();  // Only admin can modify menu items
+
+      // Reviews subcollection
+      match /reviews/{reviewId} {
+        allow read: if true;  // Anyone can read reviews
+        allow list: if true;  // Allow listing reviews
+        allow create: if isAuthenticated();  // Logged in users can create reviews
+        allow update, delete: if isOwner(request.auth.uid) || isAdmin();  // Owner or admin can modify reviews
+      }
+    }
+
+    // Orders collection rules
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow list, update, delete: if isAdmin();  // Admin can manage all orders
+    }
+
+    // Default deny for all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
