@@ -1,13 +1,13 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  base: './',  // Ensure this is set correctly
+  base: "./", // Ensures proper routing for Vite
   build: {
-    outDir: 'dist',  // Ensures Vercel picks the correct folder
+    outDir: "dist",
   },
   server: {
-    port: 3000,
-  },
+    historyApiFallback: true, // Handles SPA routing in development
+  }
 });
