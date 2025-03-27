@@ -1,13 +1,15 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: './',  // Ensure this is set correctly
-  build: {
-    outDir: 'dist',  // Ensures Vercel picks the correct folder
+  optimizeDeps: {
+    exclude: ['lucide-react'],
   },
-  server: {
-    port: 3000,
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
 });
