@@ -70,9 +70,6 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showMessages, setShowMessages] = useState(false);
-  const [expandedMenuItems, setExpandedMenuItems] = useState(false);
-  const [expandedMessages, setExpandedMessages] = useState(false);
-  const ITEMS_TO_SHOW_COLLAPSED = 5; // Number of items to show when collapsed
 
   useEffect(() => {
     if (isAdmin) {
@@ -655,20 +652,6 @@ const Dashboard = () => {
 
           {/* Menu Items List */}
           <div className="overflow-x-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium">Items ({menuItems.length})</h3>
-              <button
-                onClick={() => setExpandedMenuItems(!expandedMenuItems)}
-                className="text-red-500 flex items-center text-sm font-medium"
-              >
-                {expandedMenuItems ? (
-                  <>Show Less <ChevronUp className="ml-1 h-4 w-4" /></>
-                ) : (
-                  <>Show More <ChevronDown className="ml-1 h-4 w-4" /></>
-                )}
-              </button>
-            </div>
-            
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -687,49 +670,47 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {menuItems
-                  .slice(0, expandedMenuItems ? menuItems.length : ITEMS_TO_SHOW_COLLAPSED)
-                  .map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 flex-shrink-0">
-                            <img
-                              className="h-10 w-10 rounded-full object-cover"
-                              src={item.image}
-                              alt={item.name}
-                            />
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                            <div className="text-sm text-gray-500">{item.description}</div>
-                          </div>
+                {menuItems.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="h-10 w-10 flex-shrink-0">
+                          <img
+                            className="h-10 w-10 rounded-full object-cover"
+                            src={item.image}
+                            alt={item.name}
+                          />
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                          {item.category}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ₹{item.price}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => setEditingItem(item)}
-                          className="text-blue-600 hover:text-blue-900 mr-4"
-                        >
-                          <Edit className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteItem(item.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                          <div className="text-sm text-gray-500">{item.description}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        {item.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      ₹{item.price}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => setEditingItem(item)}
+                        className="text-blue-600 hover:text-blue-900 mr-4"
+                      >
+                        <Edit className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -738,58 +719,41 @@ const Dashboard = () => {
         {/* Messages Section */}
         {showMessages && (
           <div className="bg-white rounded-lg shadow-md p-6 mt-8">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold">Contact Messages ({messages.length})</h3>
-              {messages.length > ITEMS_TO_SHOW_COLLAPSED && (
-                <button
-                  onClick={() => setExpandedMessages(!expandedMessages)}
-                  className="text-yellow-500 flex items-center text-sm font-medium"
-                >
-                  {expandedMessages ? (
-                    <>Show Less <ChevronUp className="ml-1 h-4 w-4" /></>
-                  ) : (
-                    <>Show More <ChevronDown className="ml-1 h-4 w-4" /></>
-                  )}
-                </button>
-              )}
-            </div>
-            
+            <h3 className="text-xl font-semibold mb-4">Contact Messages</h3>
             {messages.length === 0 ? (
               <p className="text-gray-500">No messages found</p>
             ) : (
               <div className="space-y-4">
-                {messages
-                  .slice(0, expandedMessages ? messages.length : ITEMS_TO_SHOW_COLLAPSED)
-                  .map((message) => (
-                    <div 
-                      key={message.id} 
-                      className={`border rounded-lg p-4 ${message.status === 'unread' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className="font-semibold">{message.name}</h4>
-                          <p className="text-sm text-gray-600">{message.email} • {message.phone}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{message.subject}</p>
-                          <p className="text-sm text-gray-500">
-                            {message.createdAt?.toDate().toLocaleString()}
-                          </p>
-                        </div>
+                {messages.map((message) => (
+                  <div 
+                    key={message.id} 
+                    className={`border rounded-lg p-4 ${message.status === 'unread' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-semibold">{message.name}</h4>
+                        <p className="text-sm text-gray-600">{message.email} • {message.phone}</p>
                       </div>
-                      <div className="text-sm text-gray-600 mb-2 p-3 bg-gray-50 rounded">
-                        {message.message}
+                      <div className="text-right">
+                        <p className="font-semibold">{message.subject}</p>
+                        <p className="text-sm text-gray-500">
+                          {message.createdAt?.toDate().toLocaleString()}
+                        </p>
                       </div>
-                      {message.status === 'unread' && (
-                        <button
-                          onClick={() => handleMarkMessageAsRead(message.id)}
-                          className="mt-2 text-sm bg-yellow-500 text-white py-1 px-3 rounded-md hover:bg-yellow-600"
-                        >
-                          Mark as Read
-                        </button>
-                      )}
                     </div>
-                  ))}
+                    <div className="text-sm text-gray-600 mb-2 p-3 bg-gray-50 rounded">
+                      {message.message}
+                    </div>
+                    {message.status === 'unread' && (
+                      <button
+                        onClick={() => handleMarkMessageAsRead(message.id)}
+                        className="mt-2 text-sm bg-yellow-500 text-white py-1 px-3 rounded-md hover:bg-yellow-600"
+                      >
+                        Mark as Read
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
