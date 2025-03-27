@@ -1,9 +1,3 @@
 {
-  "version": 2,
-  "functions": {
-    "api/*.ts": {
-      "memory": 128,
-      "maxDuration": 10
-    }
-  }
+  "routes": [{ "src": "/(.*)", "dest": "/" }]
 }
