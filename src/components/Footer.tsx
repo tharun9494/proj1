@@ -5,19 +5,20 @@ import logo from './images/logo.png'
 
 const Footer = () => {
   return (
-    <footer className="bg-gray-900 text-white">
+    // Hidden on mobile (< 640px), visible on sm and above (tablet/desktop)
+    <footer className="hidden sm:block bg-gray-900 text-white">
       <div className="max-w-7xl mx-auto py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
           <div>
-            <h3 className="text-lg sm:text-xl font-bold mb-4">Pitta's Bawarchi</h3>
-            <p className="text-sm sm:text-base text-gray-400">
+            <h3 className="text-xl font-bold mb-4">Pitta's Bawarchi</h3>
+            <p className="text-base text-gray-400">
               Experience authentic Indian cuisine at its finest. Our traditional recipes and warm hospitality make every meal special.
             </p>
             <img src={logo} alt="Pitta's Bawarchi Logo" className="h-20 w-auto" />
           </div>
           <div>
-            <h4 className="text-base sm:text-lg font-semibold mb-4">Quick Links</h4>
-            <ul className="space-y-2 text-sm sm:text-base">
+            <h4 className="text-lg font-semibold mb-4">Quick Links</h4>
+            <ul className="space-y-2 text-base">
               <li>
                 <Link to="/about" className="text-gray-400 hover:text-white">
                   About Us
@@ -41,8 +42,8 @@ const Footer = () => {
             </ul>
           </div>
           <div>
-            <h4 className="text-base sm:text-lg font-semibold mb-4">Contact Info</h4>
-            <ul className="space-y-2 text-sm sm:text-base text-gray-400">
+            <h4 className="text-lg font-semibold mb-4">Contact Info</h4>
+            <ul className="space-y-2 text-base text-gray-400">
               <li>Email: pittasbawarchi@gmail.com</li>
               <li>Phone: +91 95154 88888</li>
               <li>Address: NTR circle Madanapalle</li>
@@ -50,25 +51,25 @@ const Footer = () => {
             </ul>
           </div>
           <div>
-            <h4 className="text-base sm:text-lg font-semibold mb-4">Follow Us</h4>
+            <h4 className="text-lg font-semibold mb-4">Follow Us</h4>
             <div className="flex space-x-4">
               <a href="#" className="text-gray-400 hover:text-white transition-colors">
-                <Facebook className="w-6 h-6 sm:w-8 sm:h-8" />
+                <Facebook className="w-8 h-8" />
               </a>
               <a href="#" className="text-gray-400 hover:text-white transition-colors">
-                <Twitter className="w-6 h-6 sm:w-8 sm:h-8" />
+                <Twitter className="w-8 h-8" />
               </a>
               <a href="#" className="text-gray-400 hover:text-white transition-colors">
-                <Instagram className="w-6 h-6 sm:w-8 sm:h-8" />
+                <Instagram className="w-8 h-8" />
               </a>
               <a href="#" className="text-gray-400 hover:text-white transition-colors">
-                <Youtube className="w-6 h-6 sm:w-8 sm:h-8" />
+                <Youtube className="w-8 h-8" />
               </a>
             </div>
           </div>
         </div>
         <div className="mt-8 pt-8 border-t border-gray-800 text-center">
-          <p className="text-sm sm:text-base text-gray-400">&copy; {new Date().getFullYear()} Pitta's Bawarchi. All rights reserved.</p>
+          <p className="text-base text-gray-400">&copy; {new Date().getFullYear()} Pitta's Bawarchi. All rights reserved.</p>
         </div>
       </div>
     </footer>

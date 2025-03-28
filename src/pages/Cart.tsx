@@ -120,62 +120,62 @@ const Cart = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
+    <div className="min-h-screen bg-gray-50 py-6 md:py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Shopping Cart</h1>
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900 mb-4 md:mb-8">Shopping Cart</h1>
 
         <div className="lg:grid lg:grid-cols-12 lg:gap-8">
           <div className="lg:col-span-8">
-            <div className="bg-white rounded-lg shadow">
+            <div className="bg-white rounded-lg shadow-sm md:shadow">
               <ul className="divide-y divide-gray-200">
                 {items.map((item) => (
                   <motion.li
                     key={item.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-6"
+                    className="p-3 md:p-6"
                   >
                     <div className="flex items-center">
                       <img
                         src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
                         alt={item.name}
-                        className="w-24 h-24 object-cover rounded-lg"
+                        className="w-20 h-20 md:w-24 md:h-24 object-cover rounded-lg"
                       />
-                      <div className="ml-6 flex-1">
+                      <div className="ml-3 md:ml-6 flex-1">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-medium text-gray-900">
+                          <h3 className="text-sm md:text-lg font-medium text-gray-900 line-clamp-1">
                             <Link to={`/menu/${item.id}`} className="hover:text-red-500">
                               {item.name}
                             </Link>
                           </h3>
-                          <p className="text-lg font-medium text-gray-900">
+                          <p className="text-sm md:text-lg font-medium text-gray-900">
                             ₹{item.price * item.quantity}
                           </p>
                         </div>
-                        <div className="mt-4 flex items-center justify-between">
+                        <div className="mt-2 md:mt-4 flex items-center justify-between">
                           <div className="flex items-center border rounded-lg">
                             <button
                               onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              className="p-2 hover:bg-gray-100"
+                              className="p-1.5 md:p-2 hover:bg-gray-100"
                               disabled={isProcessing}
                             >
-                              <Minus size={16} />
+                              <Minus size={14} className="md:w-4 md:h-4" />
                             </button>
-                            <span className="px-4 py-2 text-gray-700">{item.quantity}</span>
+                            <span className="px-2 md:px-4 py-1 md:py-2 text-sm md:text-base text-gray-700">{item.quantity}</span>
                             <button
                               onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              className="p-2 hover:bg-gray-100"
+                              className="p-1.5 md:p-2 hover:bg-gray-100"
                               disabled={isProcessing}
                             >
-                              <Plus size={16} />
+                              <Plus size={14} className="md:w-4 md:h-4" />
                             </button>
                           </div>
                           <button
                             onClick={() => removeFromCart(item.id)}
-                            className="text-red-500 hover:text-red-600"
+                            className="text-red-500 hover:text-red-600 p-1"
                             disabled={isProcessing}
                           >
-                            <Trash2 size={20} />
+                            <Trash2 size={16} className="md:w-5 md:h-5" />
                           </button>
                         </div>
                       </div>
@@ -185,12 +185,12 @@ const Cart = () => {
               </ul>
             </div>
 
-            {/* Delivery Address Section */}
-            <div className="mt-8 bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Delivery Address</h2>
+            {/* Delivery Address Section - Compact for mobile */}
+            <div className="mt-4 md:mt-8 bg-white rounded-lg shadow-sm md:shadow p-4 md:p-6">
+              <h2 className="text-base md:text-lg font-medium text-gray-900 mb-3 md:mb-4">Delivery Address</h2>
               
               {user && (
-                <div className="mb-4">
+                <div className="mb-3 md:mb-4">
                   <label className="flex items-center">
                     <input
                       type="checkbox"
@@ -198,16 +198,16 @@ const Cart = () => {
                       onChange={(e) => setUseProfileAddress(e.target.checked)}
                       className="rounded border-gray-300 text-red-500 focus:ring-red-500"
                     />
-                    <span className="ml-2 text-sm text-gray-600">
+                    <span className="ml-2 text-xs md:text-sm text-gray-600">
                       Use address from profile
                     </span>
                   </label>
                 </div>
               )}
 
-              <div className="grid grid-cols-1 gap-6">
+              <div className="grid grid-cols-1 gap-4 md:gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
                     Street Address
                   </label>
                   <input
@@ -215,12 +215,12 @@ const Cart = () => {
                     value={address.street}
                     onChange={(e) => setAddress({ ...address, street: e.target.value })}
                     disabled={useProfileAddress}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm"
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-3 md:gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
                       City
                     </label>
                     <input
@@ -228,11 +228,11 @@ const Cart = () => {
                       value={address.city}
                       onChange={(e) => setAddress({ ...address, city: e.target.value })}
                       disabled={useProfileAddress}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
                       Pincode
                     </label>
                     <input
@@ -240,12 +240,12 @@ const Cart = () => {
                       value={address.pincode}
                       onChange={(e) => setAddress({ ...address, pincode: e.target.value })}
                       disabled={useProfileAddress}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
                     Landmark (Optional)
                   </label>
                   <input
@@ -253,17 +253,17 @@ const Cart = () => {
                     value={address.landmark}
                     onChange={(e) => setAddress({ ...address, landmark: e.target.value })}
                     disabled={useProfileAddress}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Payment Method Section */}
-            <div className="mt-8 bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Payment Method</h2>
-              <div className="space-y-4">
-                <label className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+            {/* Payment Method Section - Compact for mobile */}
+            <div className="mt-4 md:mt-8 bg-white rounded-lg shadow-sm md:shadow p-4 md:p-6">
+              <h2 className="text-base md:text-lg font-medium text-gray-900 mb-3 md:mb-4">Payment Method</h2>
+              <div className="space-y-3 md:space-y-4">
+                <label className="flex items-center p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
                   <input
                     type="radio"
                     name="paymentMethod"
@@ -273,15 +273,15 @@ const Cart = () => {
                     className="h-4 w-4 text-red-500 focus:ring-red-500 border-gray-300"
                   />
                   <div className="ml-3 flex items-center">
-                    <CreditCard className="h-6 w-6 text-gray-400 mr-2" />
+                    <CreditCard className="h-5 w-5 md:h-6 md:w-6 text-gray-400 mr-2" />
                     <div>
-                      <p className="text-sm font-medium text-gray-900">Online Payment</p>
-                      <p className="text-sm text-gray-500">Free delivery</p>
+                      <p className="text-xs md:text-sm font-medium text-gray-900">Online Payment</p>
+                      <p className="text-xs text-gray-500">Free delivery</p>
                     </div>
                   </div>
                 </label>
 
-                <label className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <label className="flex items-center p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
                   <input
                     type="radio"
                     name="paymentMethod"
@@ -291,10 +291,10 @@ const Cart = () => {
                     className="h-4 w-4 text-red-500 focus:ring-red-500 border-gray-300"
                   />
                   <div className="ml-3 flex items-center">
-                    <Truck className="h-6 w-6 text-gray-400 mr-2" />
+                    <Truck className="h-5 w-5 md:h-6 md:w-6 text-gray-400 mr-2" />
                     <div>
-                      <p className="text-sm font-medium text-gray-900">Cash on Delivery</p>
-                      <p className="text-sm text-gray-500">₹40 delivery fee</p>
+                      <p className="text-xs md:text-sm font-medium text-gray-900">Cash on Delivery</p>
+                      <p className="text-xs text-gray-500">₹40 delivery fee</p>
                     </div>
                   </div>
                 </label>
@@ -302,24 +302,25 @@ const Cart = () => {
             </div>
           </div>
 
-          <div className="lg:col-span-4 mt-8 lg:mt-0">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Order Summary</h2>
+          {/* Order Summary Section - Sticky on mobile */}
+          <div className="lg:col-span-4 mt-4 md:mt-0 sticky bottom-0 lg:relative bg-white lg:bg-transparent p-4 lg:p-0 shadow-top lg:shadow-none">
+            <div className="bg-white rounded-lg shadow-sm md:shadow p-4 md:p-6">
+              <h2 className="text-base md:text-lg font-medium text-gray-900 mb-3 md:mb-4">Order Summary</h2>
               <div className="flow-root">
-                <dl className="-my-4 text-sm divide-y divide-gray-200">
-                  <div className="py-4 flex items-center justify-between">
-                    <dt className="text-gray-600">Subtotal ({totalItems} items)</dt>
-                    <dd className="font-medium text-gray-900">₹{totalAmount}</dd>
+                <dl className="-my-2 md:-my-4 text-sm divide-y divide-gray-200">
+                  <div className="py-2 md:py-4 flex items-center justify-between">
+                    <dt className="text-xs md:text-sm text-gray-600">Subtotal ({totalItems} items)</dt>
+                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{totalAmount}</dd>
                   </div>
-                  <div className="py-4 flex items-center justify-between">
-                    <dt className="text-gray-600">Delivery Fee</dt>
-                    <dd className="font-medium text-gray-900">
+                  <div className="py-2 md:py-4 flex items-center justify-between">
+                    <dt className="text-xs md:text-sm text-gray-600">Delivery Fee</dt>
+                    <dd className="text-xs md:text-sm font-medium text-gray-900">
                       ₹{paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE}
                     </dd>
                   </div>
-                  <div className="py-4 flex items-center justify-between">
-                    <dt className="text-base font-medium text-gray-900">Order Total</dt>
-                    <dd className="text-base font-medium text-gray-900">
+                  <div className="py-2 md:py-4 flex items-center justify-between">
+                    <dt className="text-sm md:text-base font-medium text-gray-900">Order Total</dt>
+                    <dd className="text-sm md:text-base font-medium text-gray-900">
                       ₹{totalAmount + (paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE)}
                     </dd>
                   </div>
@@ -328,11 +329,11 @@ const Cart = () => {
               <button
                 onClick={handleCheckout}
                 disabled={isProcessing || !user}
-                className="mt-6 w-full flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mt-4 md:mt-6 w-full flex items-center justify-center px-4 md:px-6 py-2 md:py-3 border border-transparent rounded-md shadow-sm text-sm md:text-base font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isProcessing ? (
                   <>
-                    <Loader className="animate-spin -ml-1 mr-3 h-5 w-5" />
+                    <Loader className="animate-spin -ml-1 mr-2 h-4 w-4 md:h-5 md:w-5" />
                     Processing...
                   </>
                 ) : (
@@ -340,12 +341,12 @@ const Cart = () => {
                     {user ? (
                       paymentMethod === 'ONLINE' ? 'Proceed to Pay' : 'Place Order'
                     ) : 'Login to Checkout'}
-                    <ArrowRight className="ml-2 h-5 w-5" />
+                    <ArrowRight className="ml-2 h-4 w-4 md:h-5 md:w-5" />
                   </>
                 )}
               </button>
               {!user && (
-                <p className="mt-2 text-sm text-gray-500 text-center">
+                <p className="mt-2 text-xs md:text-sm text-gray-500 text-center">
                   Please{' '}
                   <Link to="/login" className="text-red-500 hover:text-red-600">
                     login

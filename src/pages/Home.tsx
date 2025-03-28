@@ -83,8 +83,8 @@ const Home = () => {
 
   return (
     <div className="min-h-screen">
-      {/* Hero Section */}
-      <section className="relative h-[70vh] bg-gradient-to-b from-black to-transparent">
+      {/* Hero Section - Improved mobile responsiveness */}
+      <section className="relative h-[60vh] md:h-[70vh] bg-gradient-to-b from-black to-transparent">
         <div className="absolute inset-0">
           <img
             src="https://images.unsplash.com/photo-1633945274405-b6c8069047b0?auto=format&fit=crop&w=1920"
@@ -97,44 +97,43 @@ const Home = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
+              className="space-y-4 md:space-y-6"
             >
-              <h1 className="text-4xl sm:text-6xl font-bold text-white leading-tight">
+              <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold text-white leading-tight">
                 Experience the Authentic Taste of Andhra
               </h1>
-              <p className="text-lg sm:text-xl text-gray-200">
+              <p className="text-base sm:text-lg md:text-xl text-gray-200">
                 Discover our signature biryanis and traditional delicacies
               </p>
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
                 <Link
                   to="/menu"
-                  className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+                  className="inline-flex items-center justify-center px-4 py-2 md:px-6 md:py-3 border border-transparent text-sm md:text-base font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
                 >
                   View Menu
-                  <ChevronRight className="ml-2 h-5 w-5" />
+                  <ChevronRight className="ml-2 h-4 w-4 md:h-5 md:w-5" />
                 </Link>
-               
               </div>
             </motion.div>
           </div>
         </div>
       </section>
 
-      {/* Featured Categories */}
-      <section className="py-16 bg-gray-50">
+      {/* Featured Categories - Better mobile spacing */}
+      <section className="py-6 md:py-16 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900">Our Specialties</h2>
-            <p className="mt-4 text-lg text-gray-600">Discover our most loved dishes and categories</p>
+          <div className="text-center mb-4 md:mb-12">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Our Specialties</h2>
+            <p className="mt-1 md:mt-4 text-sm md:text-lg text-gray-600">Discover our most loved dishes and categories</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-8">
             {featuredCategories.map((category) => (
               <motion.div
                 key={category.id}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                className="relative rounded-xl overflow-hidden group cursor-pointer"
+                className="relative rounded-lg md:rounded-xl overflow-hidden group cursor-pointer"
               >
                 <div className="aspect-w-4 aspect-h-3">
                   <img
@@ -143,9 +142,9 @@ const Home = () => {
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-70" />
-                  <div className="absolute bottom-0 left-0 p-6 text-white">
-                    <h3 className="text-2xl font-bold mb-2">{category.title}</h3>
-                    <p className="text-gray-200">{category.description}</p>
+                  <div className="absolute bottom-0 left-0 p-2 sm:p-4 md:p-6 text-white">
+                    <h3 className="text-sm sm:text-lg md:text-2xl font-bold mb-0.5 md:mb-2">{category.title}</h3>
+                    <p className="text-xs sm:text-sm md:text-base text-gray-200">{category.description}</p>
                   </div>
                 </div>
               </motion.div>
@@ -154,58 +153,58 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Popular Items */}
-      <section className="py-16 bg-white">
+      {/* Popular Items - 2 columns on mobile */}
+      <section className="py-8 md:py-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center mb-12">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900">Most Popular</h2>
-              <p className="mt-2 text-lg text-gray-600">Our customers' favorite dishes</p>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 md:mb-12">
+            <div className="mb-3 sm:mb-0">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Most Popular</h2>
+              <p className="mt-1 sm:mt-2 text-sm sm:text-base md:text-lg text-gray-600">Our customers' favorite dishes</p>
             </div>
             <Link
               to="/menu"
-              className="inline-flex items-center text-red-600 hover:text-red-700 font-medium"
+              className="inline-flex items-center text-sm md:text-base text-red-600 hover:text-red-700 font-medium"
             >
-              View Full Menu <ArrowRight className="ml-2 h-5 w-5" />
+              View Full Menu <ArrowRight className="ml-1 h-4 w-4 md:h-5 md:w-5" />
             </Link>
           </div>
 
           {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+            <div className="flex justify-center items-center h-48">
+              <div className="animate-spin rounded-full h-8 w-8 md:h-12 md:w-12 border-b-2 border-red-500"></div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-8">
               {popularItems.map((item) => (
                 <motion.div
                   key={item.id}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
+                  className="bg-white rounded-lg md:rounded-xl shadow-sm md:shadow-lg overflow-hidden hover:shadow-md md:hover:shadow-xl transition-shadow"
                 >
                   <Link to={`/menu/${item.id}`}>
-                    <div className="relative h-48 sm:h-56">
+                    <div className="relative h-28 sm:h-40 md:h-56">
                       <img
                         src={item.image}
                         alt={item.name}
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute top-4 right-4 bg-white px-3 py-1 rounded-full text-sm font-semibold text-gray-900">
+                      <div className="absolute top-1 right-1 md:top-4 md:right-4 bg-white px-1.5 py-0.5 md:px-3 md:py-1 rounded-full text-xs md:text-sm font-semibold text-gray-900">
                         ₹{item.price}
                       </div>
                     </div>
-                    <div className="p-6">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-xl font-semibold text-gray-900">{item.name}</h3>
+                    <div className="p-2 sm:p-3 md:p-6">
+                      <div className="flex justify-between items-start mb-1 md:mb-2">
+                        <h3 className="text-sm sm:text-base md:text-xl font-semibold text-gray-900 line-clamp-1">{item.name}</h3>
                         <div className="flex items-center">
-                          <Star className="h-5 w-5 text-yellow-400 fill-current" />
-                          <span className="ml-1 text-sm text-gray-600">4.5</span>
+                          <Star className="h-3 w-3 md:h-5 md:w-5 text-yellow-400 fill-current" />
+                          <span className="ml-0.5 text-xs md:text-sm text-gray-600">4.5</span>
                         </div>
                       </div>
-                      <p className="text-gray-600 mb-4 line-clamp-2">{item.description}</p>
-                      <div className="flex items-center text-sm text-gray-500">
-                        <Clock className="h-4 w-4 mr-1" />
+                      <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2 md:mb-4 line-clamp-1 sm:line-clamp-2">{item.description}</p>
+                      <div className="flex items-center text-xs md:text-sm text-gray-500">
+                        <Clock className="h-2.5 w-2.5 md:h-4 md:w-4 mr-1" />
                         <span>30-40 min</span>
                       </div>
                     </div>
@@ -217,8 +216,8 @@ const Home = () => {
         </div>
       </section>
 
-      {/* About the Owner Section */}
-      <section className="py-16 bg-gray-50">
+      {/* About the Owner Section - Better stacking on mobile */}
+      <section className="py-10 md:py-16 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="lg:flex lg:items-center lg:gap-12">
             <div className="lg:w-1/2">
@@ -231,11 +230,11 @@ const Home = () => {
                 <img
                   src="https://images.unsplash.com/photo-1600565193348-f74bd3c7ccdf?auto=format&fit=crop&w=800"
                   alt="Chef Pitta Ramesh"
-                  className="rounded-lg shadow-xl"
+                  className="rounded-lg shadow-xl w-full"
                 />
-                <div className="absolute -bottom-6 -right-6 bg-red-500 text-white py-4 px-8 rounded-lg shadow-lg">
-                  <p className="text-2xl font-bold">14+</p>
-                  <p className="text-sm">Years of Excellence</p>
+                <div className="absolute -bottom-4 -right-4 md:-bottom-6 md:-right-6 bg-red-500 text-white py-2 px-4 md:py-4 md:px-8 rounded-lg shadow-lg">
+                  <p className="text-xl md:text-2xl font-bold">14+</p>
+                  <p className="text-xs md:text-sm">Years of Excellence</p>
                 </div>
               </motion.div>
             </div>
@@ -283,22 +282,22 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Call to Action */}
-      <section className="py-16 bg-red-600">
+      {/* Call to Action - Improved mobile padding */}
+      <section className="py-10 md:py-16 bg-red-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h2 className="text-3xl font-bold text-white mb-4">
+            <h2 className="text-2xl md:text-3xl font-bold text-white mb-3 md:mb-4">
               Ready to Experience Our Flavors?
             </h2>
-            <p className="text-lg text-red-100 mb-8">
+            <p className="text-base md:text-lg text-red-100 mb-6 md:mb-8">
               Order now and get your favorite dishes delivered to your doorstep
             </p>
             <Link
               to="/menu"
-              className="inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-red-600 bg-white hover:bg-red-50"
+              className="inline-flex items-center justify-center px-6 py-2 md:px-8 md:py-3 border border-transparent text-sm md:text-base font-medium rounded-md text-red-600 bg-white hover:bg-red-50"
             >
               Order Now
-              <ArrowRight className="ml-2 h-5 w-5" />
+              <ArrowRight className="ml-2 h-4 w-4 md:h-5 md:w-5" />
             </Link>
           </div>
         </div>

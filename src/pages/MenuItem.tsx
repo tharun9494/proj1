@@ -168,77 +168,76 @@ const MenuItem = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <button
           onClick={() => navigate('/menu')}
-          className="flex items-center text-gray-600 hover:text-red-500 mb-8"
+          className="flex items-center text-gray-600 hover:text-red-500 mb-4 md:mb-8 text-sm md:text-base"
         >
-          <ArrowLeft className="h-5 w-5 mr-2" />
+          <ArrowLeft className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2" />
           Back to Menu
         </button>
 
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="md:flex">
+        <div className="bg-white rounded-lg shadow-md md:shadow-lg overflow-hidden">
+          <div className="flex flex-col md:flex-row">
             <div className="md:w-1/2">
               <img
                 src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
                 alt={item.name}
-                className="w-full h-96 object-cover"
+                className="w-full h-64 md:h-96 object-cover"
               />
             </div>
-            <div className="md:w-1/2 p-8">
+            <div className="md:w-1/2 p-4 md:p-8">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <div className="flex justify-between items-start">
-                  <h1 className="text-3xl font-bold text-gray-900">{item.name}</h1>
-                  <span className="px-3 py-1 bg-red-100 text-red-800 text-sm font-semibold rounded-full">
+                <div className="flex flex-col gap-2 md:gap-0">
+                  <h1 className="text-xl md:text-3xl font-bold text-gray-900">{item.name}</h1>
+                  <span className="self-start px-2 py-0.5 md:px-3 md:py-1 bg-red-50 text-red-700 text-xs md:text-sm font-medium rounded-full">
                     {item.category}
                   </span>
                 </div>
-                <div className="mt-4 flex items-center">
+                <div className="mt-2 md:mt-4 flex items-center">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <Star
                       key={star}
-                      className={`h-5 w-5 ${
+                      className={`h-4 w-4 md:h-5 md:w-5 ${
                         star <= averageRating
                           ? 'text-yellow-400 fill-current'
                           : 'text-gray-300'
                       }`}
                     />
                   ))}
-                  <span className="ml-2 text-gray-600">
+                  <span className="ml-2 text-xs md:text-sm text-gray-600">
                     ({reviews.length} reviews)
                   </span>
                 </div>
-                <p className="mt-4 text-gray-600">{item.description}</p>
-                <div className="mt-6">
-                  <span className="text-3xl font-bold text-gray-900">₹{item.price}</span>
+                <p className="mt-2 md:mt-4 text-sm md:text-base text-gray-600">{item.description}</p>
+                <div className="mt-4 md:mt-6">
+                  <span className="text-2xl md:text-3xl font-bold text-gray-900">₹{item.price}</span>
                 </div>
                 
-                {/* Quantity Selector */}
-                <div className="mt-6 flex items-center space-x-4">
-                  <span className="text-gray-700">Quantity:</span>
+                <div className="mt-4 md:mt-6 flex items-center space-x-3 md:space-x-4">
+                  <span className="text-sm md:text-base text-gray-700">Quantity:</span>
                   <div className="flex items-center border rounded-lg">
                     <button
                       onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                      className="p-2 hover:bg-gray-100"
+                      className="p-1.5 md:p-2 hover:bg-gray-100"
                     >
-                      <Minus size={20} />
+                      <Minus size={16} className="md:w-5 md:h-5" />
                     </button>
-                    <span className="px-4 py-2 text-lg font-medium">{quantity}</span>
+                    <span className="px-3 md:px-4 py-1 md:py-2 text-base md:text-lg font-medium">{quantity}</span>
                     <button
                       onClick={() => setQuantity(q => q + 1)}
-                      className="p-2 hover:bg-gray-100"
+                      className="p-1.5 md:p-2 hover:bg-gray-100"
                     >
-                      <Plus size={20} />
+                      <Plus size={16} className="md:w-5 md:h-5" />
                     </button>
                   </div>
                 </div>
 
                 <button
                   onClick={handleAddToCart}
-                  className="mt-8 w-full flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-red-500 hover:bg-red-600"
+                  className="mt-4 md:mt-8 w-full flex items-center justify-center px-4 md:px-6 py-2 md:py-3 border border-transparent rounded-md shadow-sm text-sm md:text-base font-medium text-white bg-red-500 hover:bg-red-600"
                 >
-                  <ShoppingCart className="h-5 w-5 mr-2" />
+                  <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 mr-2" />
                   Add to Cart - ₹{item.price * quantity}
                 </button>
               </motion.div>
@@ -246,16 +245,14 @@ const MenuItem = () => {
           </div>
         </div>
 
-        {/* Reviews Section */}
-        <div className="mt-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8">Customer Reviews</h2>
+        <div className="mt-8 md:mt-12">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4 md:mb-8">Customer Reviews</h2>
 
-          {/* Add Review Form */}
           {user && (
-            <form onSubmit={handleAddReview} className="bg-white rounded-lg shadow-md p-6 mb-8">
-              <h3 className="text-lg font-semibold mb-4">Write a Review</h3>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+            <form onSubmit={handleAddReview} className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6 md:mb-8">
+              <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Write a Review</h3>
+              <div className="mb-3 md:mb-4">
+                <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1 md:mb-2">
                   Rating
                 </label>
                 <div className="flex items-center">
@@ -264,10 +261,10 @@ const MenuItem = () => {
                       key={star}
                       type="button"
                       onClick={() => setNewReview({ ...newReview, rating: star })}
-                      className="p-1"
+                      className="p-0.5 md:p-1"
                     >
                       <Star
-                        className={`h-6 w-6 ${
+                        className={`h-5 w-5 md:h-6 md:w-6 ${
                           star <= newReview.rating
                             ? 'text-yellow-400 fill-current'
                             : 'text-gray-300'
@@ -277,45 +274,44 @@ const MenuItem = () => {
                   ))}
                 </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="mb-3 md:mb-4">
+                <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1 md:mb-2">
                   Your Review
                 </label>
                 <textarea
                   value={newReview.comment}
                   onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
-                  rows={4}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
-                  placeholder="Share your thoughts about this item..."
+                  rows={3}
+                  className="w-full text-sm md:text-base rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                  placeholder="Share your thoughts..."
                 />
               </div>
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 disabled:opacity-50"
+                className="w-full bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 disabled:opacity-50 text-sm md:text-base"
               >
                 {submitting ? 'Posting...' : 'Post Review'}
               </button>
             </form>
           )}
 
-          {/* Reviews List */}
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6">
             {reviews.map((review) => (
               <motion.div
                 key={review.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-lg shadow-md p-6"
+                className="bg-white rounded-lg shadow-md p-4 md:p-6"
               >
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-start md:items-center justify-between mb-2 md:mb-4">
                   <div>
-                    <h4 className="text-lg font-semibold">{review.userName}</h4>
+                    <h4 className="text-sm md:text-lg font-semibold">{review.userName}</h4>
                     <div className="flex items-center mt-1">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star
                           key={star}
-                          className={`h-4 w-4 ${
+                          className={`h-3 w-3 md:h-4 md:w-4 ${
                             star <= review.rating
                               ? 'text-yellow-400 fill-current'
                               : 'text-gray-300'
@@ -324,16 +320,16 @@ const MenuItem = () => {
                       ))}
                     </div>
                   </div>
-                  <span className="text-sm text-gray-500">
+                  <span className="text-xs md:text-sm text-gray-500">
                     {review.createdAt?.toDate().toLocaleDateString()}
                   </span>
                 </div>
-                <p className="text-gray-600">{review.comment}</p>
+                <p className="text-sm md:text-base text-gray-600">{review.comment}</p>
               </motion.div>
             ))}
 
             {reviews.length === 0 && (
-              <p className="text-center text-gray-500">No reviews yet. Be the first to review!</p>
+              <p className="text-center text-sm md:text-base text-gray-500">No reviews yet. Be the first to review!</p>
             )}
           </div>
         </div>
