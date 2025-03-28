@@ -26,7 +26,9 @@ const Navbar = () => {
           <div className="flex items-center">
             <Link to="/" className="flex-shrink-0 flex items-center">
             <img src={logo} alt="Pitta's Bawarchi Logo" className="h-12 w-auto" />
-              <span className="text-xl sm:text-2xl font-bold text-red-500 italic">Pitta's Bawarchi</span>
+              <span className="text-xl sm:text-2xl italic">
+                <span className="text-red-500">Pitta's</span> <span className="text-green-500">Bawarchi</span>
+              </span>
             </Link>
             <div className="hidden md:flex items-center ml-8">
               <MapPin className="text-gray-400" size={20} />
