@@ -1,13 +1,10 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: "/", // Use absolute path for Vercel deployment
+  base: './', // Ensures correct path resolution
   build: {
-    outDir: "dist",
+    outDir: 'dist',
   },
-  server: {
-    // Vite handles SPA routing automatically
-  }
 });
