@@ -70,6 +70,9 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showMessages, setShowMessages] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAllItems, setShowAllItems] = useState(false);
+  const ITEMS_PER_PAGE = 5; // Number of items to show initially
 
   useEffect(() => {
     if (isAdmin) {
@@ -336,6 +339,11 @@ const Dashboard = () => {
     </div>
   );
 
+  const filteredMenuItems = menuItems.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -355,184 +363,107 @@ const Dashboard = () => {
           <p className="mt-2 text-gray-600">Manage your restaurant's menu and orders</p>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* Stats Cards - Grid layout with 3 items per row */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-6 mb-6">
+          {/* Total Items */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-6 rounded-lg shadow-md"
+            className="bg-white p-3 md:p-6 rounded-lg shadow-md"
           >
             <div className="flex items-center">
-              <Package className="h-10 w-10 text-red-500" />
-              <div className="ml-4">
-                <h2 className="text-lg font-semibold text-gray-900">Total Items</h2>
-                <p className="text-3xl font-bold text-gray-700">{totalItems}</p>
+              <Package className="h-6 w-6 md:h-10 md:w-10 text-red-500" />
+              <div className="ml-2 md:ml-4">
+                <h2 className="text-sm md:text-lg font-semibold text-gray-900">Total Items</h2>
+                <p className="text-xl md:text-3xl font-bold text-gray-700">{totalItems}</p>
               </div>
             </div>
           </motion.div>
 
+          {/* Today's Orders */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             onClick={() => setShowTodayOrders(!showTodayOrders)}
-            className="bg-white p-6 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
+            className="bg-white p-3 md:p-6 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
           >
             <div className="flex items-center">
-              <ShoppingBag className="h-10 w-10 text-blue-500" />
-              <div className="ml-4">
-                <h2 className="text-lg font-semibold text-gray-900">Today's Orders</h2>
-                <p className="text-3xl font-bold text-gray-700">{todayOrders.length}</p>
+              <ShoppingBag className="h-6 w-6 md:h-10 md:w-10 text-blue-500" />
+              <div className="ml-2 md:ml-4">
+                <h2 className="text-sm md:text-lg font-semibold text-gray-900">Today's Orders</h2>
+                <p className="text-xl md:text-3xl font-bold text-gray-700">{todayOrders.length}</p>
               </div>
             </div>
           </motion.div>
 
+          {/* Completed Orders */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
             onClick={() => setShowCompletedOrders(!showCompletedOrders)}
-            className="bg-white p-6 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
+            className="bg-white p-3 md:p-6 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
           >
             <div className="flex items-center">
-              <CheckCircle className="h-10 w-10 text-green-500" />
-              <div className="ml-4">
-                <h2 className="text-lg font-semibold text-gray-900">Completed Orders</h2>
-                <p className="text-3xl font-bold text-gray-700">{completedOrders.length}</p>
+              <CheckCircle className="h-6 w-6 md:h-10 md:w-10 text-green-500" />
+              <div className="ml-2 md:ml-4">
+                <h2 className="text-sm md:text-lg font-semibold text-gray-900">Completed</h2>
+                <p className="text-xl md:text-3xl font-bold text-gray-700">{completedOrders.length}</p>
               </div>
             </div>
           </motion.div>
 
+          {/* Past Orders */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-white p-6 rounded-lg shadow-md"
+            className="bg-white p-3 md:p-6 rounded-lg shadow-md"
           >
             <div className="flex items-center">
-              <Calendar className="h-10 w-10 text-purple-500" />
-              <div className="ml-4">
-                <h2 className="text-lg font-semibold text-gray-900">Past Orders</h2>
-                <p className="text-3xl font-bold text-gray-700">{pastOrders.length}</p>
+              <Calendar className="h-6 w-6 md:h-10 md:w-10 text-purple-500" />
+              <div className="ml-2 md:ml-4">
+                <h2 className="text-sm md:text-lg font-semibold text-gray-900">Past Orders</h2>
+                <p className="text-xl md:text-3xl font-bold text-gray-700">{pastOrders.length}</p>
               </div>
             </div>
           </motion.div>
 
+          {/* Messages */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
             onClick={() => setShowMessages(!showMessages)}
-            className="bg-white p-6 rounded-lg shadow-md cursor-pointer hover:bg-gray-50 relative overflow-hidden"
+            className="bg-white p-3 md:p-6 rounded-lg shadow-md cursor-pointer hover:bg-gray-50 relative"
           >
             <div className="flex items-center">
-              <MessageCircle className="h-10 w-10 text-yellow-500" />
-              <div className="ml-4">
-                <h2 className="text-lg font-semibold text-gray-900">Messages</h2>
-                <p className="text-3xl font-bold text-gray-700">{messages.length}</p>
-                <span className="text-sm text-red-500">
+              <MessageCircle className="h-6 w-6 md:h-10 md:w-10 text-yellow-500" />
+              <div className="ml-2 md:ml-4">
+                <h2 className="text-sm md:text-lg font-semibold text-gray-900">Messages</h2>
+                <p className="text-xl md:text-3xl font-bold text-gray-700">{messages.length}</p>
+                <span className="text-xs md:text-sm text-red-500">
                   {messages.filter(m => m.status === 'unread').length} unread
                 </span>
               </div>
             </div>
-            
-            {/* Add an indicator to show it's clickable */}
-            <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400">
-              {showMessages ? (
-                <span className="flex items-center">Hide <ChevronUp className="ml-1 h-5 w-5" /></span>
-              ) : (
-                <span className="flex items-center">View All <ChevronDown className="ml-1 h-5 w-5" /></span>
-              )}
-            </div>
           </motion.div>
         </div>
 
-        {/* Analytics Section */}
+        {/* Analytics Stats - Grid layout */}
         {orderStats && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold">Order Analytics</h2>
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setSelectedTimeframe('daily')}
-                  className={`px-4 py-2 rounded-md ${
-                    selectedTimeframe === 'daily'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  Daily
-                </button>
-                <button
-                  onClick={() => setSelectedTimeframe('weekly')}
-                  className={`px-4 py-2 rounded-md ${
-                    selectedTimeframe === 'weekly'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  Weekly
-                </button>
-                <button
-                  onClick={() => setSelectedTimeframe('monthly')}
-                  className={`px-4 py-2 rounded-md ${
-                    selectedTimeframe === 'monthly'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  Monthly
-                </button>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-6 mb-6">
+            {[
+              { title: 'Total Orders', value: orderStats[selectedTimeframe].total },
+              { title: 'Completed Orders', value: orderStats[selectedTimeframe].completed },
+              { title: 'Revenue', value: `₹${orderStats[selectedTimeframe].revenue}` }
+            ].map((stat, index) => (
+              <div key={index} className="bg-gray-50 p-3 md:p-4 rounded-lg">
+                <h3 className="text-sm md:text-lg font-medium mb-1 md:mb-2">{stat.title}</h3>
+                <p className="text-lg md:text-3xl font-bold text-gray-900">{stat.value}</p>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">Total Orders</h3>
-                <p className="text-3xl font-bold text-gray-900">
-                  {orderStats[selectedTimeframe].total}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">Completed Orders</h3>
-                <p className="text-3xl font-bold text-gray-900">
-                  {orderStats[selectedTimeframe].completed}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">Revenue</h3>
-                <p className="text-3xl font-bold text-gray-900">
-                  ₹{orderStats[selectedTimeframe].revenue}
-                </p>
-              </div>
-            </div>
-
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={orderStats[selectedTimeframe].orders}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(date) => new Date(date).toLocaleDateString()}
-                  />
-                  <YAxis />
-                  <Tooltip
-                    labelFormatter={(date) => new Date(date).toLocaleDateString()}
-                    formatter={(value) => [`₹${value}`, 'Revenue']}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="amount"
-                    stroke="#EF4444"
-                    name="Revenue"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            ))}
           </div>
         )}
 
@@ -540,214 +471,206 @@ const Dashboard = () => {
         {showTodayOrders && renderOrdersList(todayOrders, "Today's Orders")}
         {showCompletedOrders && renderOrdersList(completedOrders, "Completed Orders")}
 
-        {/* Menu Management Section */}
-        <div className="bg-white rounded-lg shadow-md p-6 mt-8">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold">Menu Items</h2>
-            <div className="flex space-x-4">
-              <button
-                onClick={handlePopulateMenu}
-                className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-              >
-                <Database className="h-5 w-5 mr-2" />
-                Populate Menu
-              </button>
+        {/* Menu Management Section - Simplified and Compact */}
+        <div className="bg-white rounded-lg shadow-md p-3 mt-4">
+          {/* Header with Search */}
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold">Menu Items ({filteredMenuItems.length})</h2>
               <button
                 onClick={() => setIsAddingItem(true)}
-                className="flex items-center px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                className="p-1.5 bg-red-500 text-white rounded-md hover:bg-red-600"
               >
-                <Plus className="h-5 w-5 mr-2" />
-                Add New Item
+                <Plus className="h-4 w-4" />
               </button>
             </div>
+            
+            <input
+              type="text"
+              placeholder="Search items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-2 py-1 text-sm border rounded-md"
+            />
           </div>
 
-          {/* Add/Edit Item Form */}
+          {/* Menu Items Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {filteredMenuItems
+              .slice(0, showAllItems ? undefined : ITEMS_PER_PAGE)
+              .map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-2 border rounded-md hover:bg-gray-50">
+                  <div className="flex items-center space-x-2">
+                    <img
+                      className="h-8 w-8 rounded-full object-cover"
+                      src={item.image}
+                      alt={item.name}
+                    />
+                    <div>
+                      <div className="text-sm font-medium line-clamp-1">{item.name}</div>
+                      <div className="text-xs text-gray-500">₹{item.price} • {item.category}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setEditingItem(item)}
+                      className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="p-1 text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
+
+          {/* Show More/Less Button */}
+          {filteredMenuItems.length > ITEMS_PER_PAGE && (
+            <button
+              onClick={() => setShowAllItems(!showAllItems)}
+              className="mt-3 w-full py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-md"
+            >
+              {showAllItems ? (
+                <span className="flex items-center justify-center">
+                  Show Less <ChevronUp className="ml-1 h-3 w-3" />
+                </span>
+              ) : (
+                <span className="flex items-center justify-center">
+                  Show More ({filteredMenuItems.length - ITEMS_PER_PAGE} items) <ChevronDown className="ml-1 h-3 w-3" />
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Add/Edit Item Modal */}
           {(isAddingItem || editingItem) && (
-            <div className="mb-6 p-6 border rounded-lg">
-              <h3 className="text-lg font-semibold mb-4">
-                {editingItem ? 'Edit Item' : 'Add New Item'}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="bg-white rounded-lg p-4 w-full max-w-md mx-4">
+                <h3 className="text-lg font-semibold mb-4">
+                  {editingItem ? 'Edit Item' : 'Add New Item'}
+                </h3>
+                
+                <div className="space-y-3">
                   <input
                     type="text"
+                    placeholder="Item name"
                     value={editingItem ? editingItem.name : newItem.name}
                     onChange={(e) => editingItem 
                       ? setEditingItem({ ...editingItem, name: e.target.value })
                       : setNewItem({ ...newItem, name: e.target.value })
                     }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                    className="w-full px-3 py-1.5 text-sm border rounded-md"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Price</label>
-                  <input
-                    type="number"
-                    value={editingItem ? editingItem.price : newItem.price}
-                    onChange={(e) => editingItem
-                      ? setEditingItem({ ...editingItem, price: Number(e.target.value) })
-                      : setNewItem({ ...newItem, price: Number(e.target.value) })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700">Description</label>
-                  <input
-                    type="text"
-                    value={editingItem ? editingItem.description : newItem.description}
-                    onChange={(e) => editingItem
-                      ? setEditingItem({ ...editingItem, description: e.target.value })
-                      : setNewItem({ ...newItem, description: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Category</label>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Price"
+                      value={editingItem ? editingItem.price : newItem.price}
+                      onChange={(e) => editingItem
+                        ? setEditingItem({ ...editingItem, price: Number(e.target.value) })
+                        : setNewItem({ ...newItem, price: Number(e.target.value) })
+                      }
+                      className="w-1/2 px-3 py-1.5 text-sm border rounded-md"
+                    />
+                    
+                    <input
+                      type="text"
+                      placeholder="Category"
+                      value={editingItem ? editingItem.category : newItem.category}
+                      onChange={(e) => editingItem
+                        ? setEditingItem({ ...editingItem, category: e.target.value })
+                        : setNewItem({ ...newItem, category: e.target.value })
+                      }
+                      className="w-1/2 px-3 py-1.5 text-sm border rounded-md"
+                    />
+                  </div>
+                  
                   <input
                     type="text"
-                    value={editingItem ? editingItem.category : newItem.category}
-                    onChange={(e) => editingItem
-                      ? setEditingItem({ ...editingItem, category: e.target.value })
-                      : setNewItem({ ...newItem, category: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Image URL</label>
-                  <input
-                    type="text"
+                    placeholder="Image URL"
                     value={editingItem ? editingItem.image : newItem.image}
                     onChange={(e) => editingItem
                       ? setEditingItem({ ...editingItem, image: e.target.value })
                       : setNewItem({ ...newItem, image: e.target.value })
                     }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                    className="w-full px-3 py-1.5 text-sm border rounded-md"
+                  />
+                  
+                  <textarea
+                    placeholder="Description"
+                    value={editingItem ? editingItem.description : newItem.description}
+                    onChange={(e) => editingItem
+                      ? setEditingItem({ ...editingItem, description: e.target.value })
+                      : setNewItem({ ...newItem, description: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 text-sm border rounded-md h-20"
                   />
                 </div>
-              </div>
-              <div className="mt-6 flex justify-end space-x-4">
-                <button
-                  onClick={() => {
-                    setIsAddingItem(false);
-                    setEditingItem(null);
-                  }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={editingItem ? handleUpdateItem : handleAddItem}
-                  className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
-                >
-                  {editingItem ? 'Update Item' : 'Add Item'}
-                </button>
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    onClick={() => {
+                      setIsAddingItem(false);
+                      setEditingItem(null);
+                    }}
+                    className="px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={editingItem ? handleUpdateItem : handleAddItem}
+                    className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
+                  >
+                    {editingItem ? 'Update' : 'Add'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
-
-          {/* Menu Items List */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Price
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {menuItems.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="h-10 w-10 flex-shrink-0">
-                          <img
-                            className="h-10 w-10 rounded-full object-cover"
-                            src={item.image}
-                            alt={item.name}
-                          />
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                          <div className="text-sm text-gray-500">{item.description}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        {item.category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ₹{item.price}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => setEditingItem(item)}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
-                      >
-                        <Edit className="h-5 w-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteItem(item.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
 
-        {/* Messages Section */}
+        {/* Messages Section - Better mobile layout */}
         {showMessages && (
-          <div className="bg-white rounded-lg shadow-md p-6 mt-8">
-            <h3 className="text-xl font-semibold mb-4">Contact Messages</h3>
+          <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mt-6 md:mt-8">
+            <h3 className="text-lg md:text-xl font-semibold mb-4">Contact Messages</h3>
             {messages.length === 0 ? (
-              <p className="text-gray-500">No messages found</p>
+              <p className="text-gray-500 text-sm md:text-base">No messages found</p>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 {messages.map((message) => (
                   <div 
                     key={message.id} 
-                    className={`border rounded-lg p-4 ${message.status === 'unread' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
+                    className={`border rounded-lg p-3 md:p-4 ${
+                      message.status === 'unread' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
+                    }`}
                   >
-                    <div className="flex justify-between items-start mb-2">
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2 md:gap-0 mb-2">
                       <div>
-                        <h4 className="font-semibold">{message.name}</h4>
-                        <p className="text-sm text-gray-600">{message.email} • {message.phone}</p>
+                        <h4 className="font-semibold text-sm md:text-base">{message.name}</h4>
+                        <p className="text-xs md:text-sm text-gray-600">{message.email}</p>
+                        <p className="text-xs md:text-sm text-gray-600">{message.phone}</p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{message.subject}</p>
-                        <p className="text-sm text-gray-500">
+                      <div className="text-left md:text-right">
+                        <p className="font-semibold text-sm md:text-base">{message.subject}</p>
+                        <p className="text-xs text-gray-500">
                           {message.createdAt?.toDate().toLocaleString()}
                         </p>
                       </div>
                     </div>
-                    <div className="text-sm text-gray-600 mb-2 p-3 bg-gray-50 rounded">
+                    <div className="text-xs md:text-sm text-gray-600 mb-2 p-2 md:p-3 bg-gray-50 rounded">
                       {message.message}
                     </div>
                     {message.status === 'unread' && (
                       <button
                         onClick={() => handleMarkMessageAsRead(message.id)}
-                        className="mt-2 text-sm bg-yellow-500 text-white py-1 px-3 rounded-md hover:bg-yellow-600"
+                        className="text-xs md:text-sm bg-yellow-500 text-white py-1 px-2 md:px-3 rounded-md hover:bg-yellow-600"
                       >
                         Mark as Read
                       </button>
