@@ -124,16 +124,16 @@ const Contact = () => {
           </div>
 
           {/* Desktop Contact Info */}
-          <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="hidden md:grid grid-cols-1 xl:grid-cols-2 gap-8">
             <div className="bg-white rounded-lg shadow-lg p-8">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Get in Touch</h2>
               <div className="space-y-6">
                 <div className="flex items-start">
-                  <MapPin className="h-6 w-6 text-red-500 mt-1" />
+                  <MapPin className="h-6 w-6 text-red-500 flex-shrink-0 mt-1" />
                   <div className="ml-4">
                     <h3 className="text-lg font-semibold text-gray-900">Location</h3>
                     <p className="text-gray-600">
-                     NTR Circle<br />
+                      NTR Circle<br />
                       Madanapalle, Andhra Pradesh<br />
                       India - 517325
                     </p>
@@ -141,35 +141,26 @@ const Contact = () => {
                 </div>
 
                 <div className="flex items-start">
-                  <Phone className="h-6 w-6 text-red-500 mt-1" />
+                  <Phone className="h-6 w-6 text-red-500 flex-shrink-0 mt-1" />
                   <div className="ml-4">
                     <h3 className="text-lg font-semibold text-gray-900">Phone</h3>
-                    <p className="text-gray-600">
-                    +91 95154 88888<br />
-                      
-                    </p>
+                    <p className="text-gray-600">+91 95154 88888</p>
                   </div>
                 </div>
 
                 <div className="flex items-start">
-                  <Mail className="h-6 w-6 text-red-500 mt-1" />
+                  <Mail className="h-6 w-6 text-red-500 flex-shrink-0 mt-1" />
                   <div className="ml-4">
                     <h3 className="text-lg font-semibold text-gray-900">Email</h3>
-                    <p className="text-gray-600">
-                      
-                    pittasbawarchi@gmail.com
-
-                    </p>
+                    <p className="text-gray-600 break-all">pittasbawarchi@gmail.com</p>
                   </div>
                 </div>
 
                 <div className="flex items-start">
-                  <Clock className="h-6 w-6 text-red-500 mt-1" />
+                  <Clock className="h-6 w-6 text-red-500 flex-shrink-0 mt-1" />
                   <div className="ml-4">
                     <h3 className="text-lg font-semibold text-gray-900">Business Hours</h3>
-                    <p className="text-gray-600">
-                      Monday - Sunday: 11:00 AM - 10:00 PM
-                    </p>
+                    <p className="text-gray-600">Monday - Sunday: 11:00 AM - 10:00 PM</p>
                   </div>
                 </div>
               </div>
@@ -179,115 +170,218 @@ const Contact = () => {
                 <Map />
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Contact Form - Simplified for mobile */}
-        <div className="bg-white rounded-lg shadow-md md:shadow-lg p-4 md:p-8">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4 md:mb-8">Send us a Message</h2>
-          
-          <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Full Name
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
-                placeholder="Enter your name"
-              />
+            {/* Contact Form - Desktop */}
+            <div className="bg-white rounded-lg shadow-lg p-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-8">Send us a Message</h2>
+              
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-base"
+                    placeholder="Enter your name"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      required
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-base"
+                      placeholder="your@email.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-base"
+                      placeholder="Your phone number"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-1">
+                    Subject
+                  </label>
+                  <input
+                    type="text"
+                    id="subject"
+                    name="subject"
+                    value={formData.subject}
+                    onChange={handleChange}
+                    required
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-base"
+                    placeholder="What's this about?"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
+                    Message
+                  </label>
+                  <textarea
+                    id="message"
+                    name="message"
+                    rows={4}
+                    value={formData.message}
+                    onChange={handleChange}
+                    required
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-base"
+                    placeholder="Your message here..."
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                >
+                  {loading ? (
+                    'Sending...'
+                  ) : (
+                    <>
+                      Send Message
+                      <Send className="ml-2 h-5 w-5" />
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Mobile Form - Show only on mobile */}
+          <div className="md:hidden bg-white rounded-lg shadow-md p-4">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Send us a Message</h2>
+            
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name
                 </label>
                 <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
                   onChange={handleChange}
                   required
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
-                  placeholder="your@email.com"
+                  placeholder="Enter your name"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
+                    placeholder="your@email.com"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    id="phone"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
+                    placeholder="Your phone number"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-1">
+                  Subject
+                </label>
+                <input
+                  type="text"
+                  id="subject"
+                  name="subject"
+                  value={formData.subject}
+                  onChange={handleChange}
+                  required
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
+                  placeholder="What's this about?"
                 />
               </div>
 
               <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
+                <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
+                  Message
                 </label>
-                <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  value={formData.phone}
+                <textarea
+                  id="message"
+                  name="message"
+                  rows={3}
+                  value={formData.message}
                   onChange={handleChange}
+                  required
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
-                  placeholder="Your phone number"
+                  placeholder="Your message here..."
                 />
               </div>
-            </div>
 
-            <div>
-              <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-1">
-                Subject
-              </label>
-              <input
-                type="text"
-                id="subject"
-                name="subject"
-                value={formData.subject}
-                onChange={handleChange}
-                required
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
-                placeholder="What's this about?"
-              />
-            </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center items-center px-4 py-2.5 md:py-3 border border-transparent rounded-md shadow-sm text-sm md:text-base font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+              >
+                {loading ? (
+                  'Sending...'
+                ) : (
+                  <>
+                    Send Message
+                    <Send className="ml-2 h-4 w-4 md:h-5 md:w-5" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
 
-            <div>
-              <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
-                Message
-              </label>
-              <textarea
-                id="message"
-                name="message"
-                rows={3}
-                value={formData.message}
-                onChange={handleChange}
-                required
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-sm md:text-base"
-                placeholder="Your message here..."
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center items-center px-4 py-2.5 md:py-3 border border-transparent rounded-md shadow-sm text-sm md:text-base font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
-            >
-              {loading ? (
-                'Sending...'
-              ) : (
-                <>
-                  Send Message
-                  <Send className="ml-2 h-4 w-4 md:h-5 md:w-5" />
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Map - Adjusted height for mobile */}
-        <div className="mt-6 md:mt-8 h-48 md:h-64 rounded-lg overflow-hidden shadow-md">
-          <Map />
+          {/* Map - Mobile only */}
+          <div className="mt-6 h-48 md:hidden rounded-lg overflow-hidden shadow-md">
+            <Map />
+          </div>
         </div>
       </div>
     </div>
