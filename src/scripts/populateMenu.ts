@@ -158,7 +158,7 @@ const menuItems: MenuItem[] = [
     name: "Angara Kabab",
     price: 230,
     category: "Tandoori",
-    description: "Spicy chargrilled kababs with a smoky flavor",
+    description: "Spicy chargrilled kababs with a smoky flavor.",
     image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=800",
     isVeg: false
   },
@@ -169,15 +169,8 @@ const menuItems: MenuItem[] = [
     description: "Spicy chargrilled kababs with a smoky flavor",
     image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=800",
     isVeg: true
-  },
-  {
-    name: "Angara Kabab",
-    price: 230,
-    category: "Tandoori",
-    description: "Spicy chargrilled kababs with a smoky flavor",
-    image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=800",
-    isVeg: true
   }
+  
 
 ];
 
