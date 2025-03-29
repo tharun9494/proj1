@@ -105,8 +105,8 @@ const Privacy = () => {
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">9. Contact Us</h2>
                 <p className="text-gray-600">
                   If you have any questions about this Privacy Policy, please contact us at:<br />
-                  Email: privacy@pittasbawarchi.com<br />
-                  Phone: +91 98765 43210
+                  Email: pittasbawarchi2@gmail.com<br />
+                  Phone: +91 95154 88888
                 </p>
               </section>
             </div>
