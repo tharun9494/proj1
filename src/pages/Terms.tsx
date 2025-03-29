@@ -32,20 +32,85 @@ const Terms = () => {
               </section>
 
               <section className="mb-8">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">3. Delivery</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">4. Cancellation and Refund Policy</h2>
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Cancellation:</h3>
+                <ul className="list-disc pl-6 text-gray-600 space-y-2 mb-4">
+                  <li>Orders can be cancelled within 5 minutes of placing the order at no cost.</li>
+                  <li>Orders cannot be cancelled once the food preparation has begun.</li>
+                  <li>For party orders or bulk orders, cancellation must be made at least 24 hours in advance.</li>
+                  <li>Cancellation charges may apply:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>0-5 minutes: No charges</li>
+                      <li>5-10 minutes: 25% of order value</li>
+                      <li>After food preparation begins: No refund</li>
+                    </ul>
+                  </li>
+                </ul>
+
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Refunds:</h3>
                 <ul className="list-disc pl-6 text-gray-600 space-y-2">
-                  <li>Delivery times are approximate and may vary.</li>
-                  <li>Delivery charges are calculated based on the delivery location.</li>
-                  <li>We reserve the right to refuse delivery to certain areas.</li>
+                  <li>Refund processing timeline:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>UPI/Mobile Wallets: 1-3 business days</li>
+                      <li>Credit/Debit Cards: 5-7 business days</li>
+                      <li>Net Banking: 3-5 business days</li>
+                    </ul>
+                  </li>
+                  <li>Full refund will be provided in cases of:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>Order cancellation before preparation</li>
+                      <li>Restaurant unable to fulfill order</li>
+                      <li>Food quality issues with valid proof</li>
+                    </ul>
+                  </li>
+                  <li>Partial refunds may be offered for incomplete orders or quality issues.</li>
                 </ul>
               </section>
 
               <section className="mb-8">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">4. Cancellation and Refunds</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">3. Delivery Policy</h2>
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Delivery Timelines:</h3>
+                <ul className="list-disc pl-6 text-gray-600 space-y-2 mb-4">
+                  <li>Standard delivery times:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>Minimum: 30-45 minutes</li>
+                      <li>Maximum: 60-75 minutes</li>
+                      <li>Peak hours may extend delivery by 15-20 minutes</li>
+                    </ul>
+                  </li>
+                  <li>Bulk orders and party orders:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>Minimum advance notice: 4 hours</li>
+                      <li>Recommended advance notice: 24 hours</li>
+                    </ul>
+                  </li>
+                </ul>
+
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Delivery Terms:</h3>
                 <ul className="list-disc pl-6 text-gray-600 space-y-2">
-                  <li>Orders can be cancelled within 5 minutes of placing the order.</li>
-                  <li>Refunds will be processed within 5-7 business days.</li>
-                  <li>Refund amount may vary based on the stage of order processing.</li>
+                  <li>Minimum order value for free delivery: ₹299</li>
+                  <li>Delivery charges:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>0-3 km: ₹30</li>
+                      <li>3-5 km: ₹50</li>
+                      <li>5-7 km: ₹70</li>
+                      <li>Beyond 7 km: Delivery not available</li>
+                    </ul>
+                  </li>
+                  <li>Additional terms:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>Live tracking available for all orders</li>
+                      <li>Contactless delivery available on request</li>
+                      <li>Delivery partner tips are optional and voluntary</li>
+                    </ul>
+                  </li>
+                  <li>Delivery may be affected during:
+                    <ul className="list-circle pl-6 mt-2 space-y-1">
+                      <li>Adverse weather conditions</li>
+                      <li>Local restrictions or curfews</li>
+                      <li>Peak hours (1-3 PM and 7-9 PM)</li>
+                    </ul>
+                  </li>
                 </ul>
               </section>
 
