@@ -135,7 +135,7 @@ const About = () => {
                 </div>
                 <div className="flex items-center">
                   <Mail className="h-5 w-5 text-red-500 mr-2" />
-                  <span className="text-sm break-all">pittasbawarchi@gmail.com</span>
+                  <span className="text-sm break-all">pittasbawarchi2x@gmail.com</span>
                 </div>
               </div>
             </div>
