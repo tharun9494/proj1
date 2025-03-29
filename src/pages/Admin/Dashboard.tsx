@@ -360,7 +360,23 @@ const Dashboard = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="mt-2 text-gray-600">Manage your restaurant's menu and orders</p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-gray-600">Manage your restaurant's menu and orders</p>
+            <button
+              onClick={handlePopulateMenu}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
+            >
+              {isLoading ? (
+                'Populating...'
+              ) : (
+                <>
+                  <Database className="h-4 w-4" />
+                  Populate Menu
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards - Grid layout with 3 items per row */}
