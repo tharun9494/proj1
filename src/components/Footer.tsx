@@ -44,7 +44,7 @@ const Footer = () => {
           <div>
             <h4 className="text-lg font-semibold mb-4">Contact Info</h4>
             <ul className="space-y-2 text-base text-gray-400">
-              <li>Email: pittasbawarchi@gmail.com</li>
+              <li>Email: pittasbawarchi2@gmail.com</li>
               <li>Phone: +91 95154 88888</li>
               <li>Address: NTR circle Madanapalle</li>
               <li>Hours: Mon-Sun 11:00 AM - 10:00 PM</li>
@@ -53,18 +53,14 @@ const Footer = () => {
           <div>
             <h4 className="text-lg font-semibold mb-4">Follow Us</h4>
             <div className="flex space-x-4">
-              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+              <a href="https://www.facebook.com/profile.php?id=61574888576554" className="text-gray-400 hover:text-white transition-colors">
                 <Facebook className="w-8 h-8" />
               </a>
-              <a href="#" className="text-gray-400 hover:text-white transition-colors">
-                <Twitter className="w-8 h-8" />
-              </a>
-              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+             
+              <a href="https://www.instagram.com/pittas_bawarchi/" className="text-gray-400 hover:text-white transition-colors">
                 <Instagram className="w-8 h-8" />
               </a>
-              <a href="#" className="text-gray-400 hover:text-white transition-colors">
-                <Youtube className="w-8 h-8" />
-              </a>
+              
             </div>
           </div>
         </div>
