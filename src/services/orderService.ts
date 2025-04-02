@@ -12,12 +12,28 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'createdAt' | 'u
   return docRef.id;
 };
 
-export const updateOrderStatus = async (orderId: string, status: Order['status']) => {
-  const orderRef = doc(db, 'orders', orderId);
-  await updateDoc(orderRef, {
-    status,
-    updatedAt: serverTimestamp()
-  });
+interface PaymentDetails {
+  status: 'success' | 'failed';
+  paymentId: string;
+  orderId: string;
+  signature: string;
+}
+
+export const updateOrderStatus = async (orderId: string, paymentDetails: PaymentDetails) => {
+  try {
+    const orderRef = doc(db, 'orders', orderId);
+    await updateDoc(orderRef, {
+      status: paymentDetails.status,
+      paymentId: paymentDetails.paymentId,
+      razorpayOrderId: paymentDetails.orderId,
+      razorpaySignature: paymentDetails.signature,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Update order status error:', error);
+    throw error;
+  }
 };
 
 export const getTodayOrders = async () => {
