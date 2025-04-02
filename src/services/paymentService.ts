@@ -1,3 +1,6 @@
+import { RAZORPAY_CONFIG } from '../config/razorpay';
+import crypto from 'crypto';
+
 interface PaymentRequest {
   amount: number;
   orderId: string;
@@ -94,6 +97,44 @@ export const initiatePayment = async ({
       }
     });
   } catch (error) {
+    throw error;
+  }
+};
+
+export const verifyPaymentSignature = async (
+  orderId: string,
+  paymentId: string,
+  signature: string
+) => {
+  try {
+    const body = orderId + '|' + paymentId;
+    const expectedSignature = crypto
+      .createHmac('sha256', RAZORPAY_CONFIG.key_secret)
+      .update(body.toString())
+      .digest('hex');
+
+    return expectedSignature === signature;
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    return false;
+  }
+};
+
+export const createRazorpayOrder = async (amount: number) => {
+  try {
+    const response = await fetch('/api/create-order', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: amount * 100,
+        currency: RAZORPAY_CONFIG.currency,
+      }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Create order error:', error);
     throw error;
   }
 };
