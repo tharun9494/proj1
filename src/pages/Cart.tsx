@@ -50,6 +50,91 @@ const Cart = () => {
     }
   }, [user, useProfileAddress]);
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.body.appendChild(script);
+    });
+  };
+
+  const handlePayment = async (amount: number, orderId: string) => {
+    try {
+      setIsProcessing(true);
+
+      // Load Razorpay SDK first
+      await loadRazorpayScript();
+
+      // Only proceed if Razorpay is loaded
+      if (!(window as any).Razorpay) {
+        throw new Error('Razorpay SDK failed to load');
+      }
+
+      const options = {
+        key: RAZORPAY_CONFIG.key_id,
+        amount: Math.round(amount * 100),
+        currency: RAZORPAY_CONFIG.currency,
+        name: RAZORPAY_CONFIG.name,
+        description: `Order #${orderId}`,
+        prefill: {
+          name: user?.displayName || '',
+          email: user?.email || '',
+          contact: user?.phone || ''
+        },
+        handler: async function (response: any) {
+          try {
+            // Update order status
+            const orderRef = doc(db, 'orders', orderId);
+            await updateDoc(orderRef, {
+              paymentId: response.razorpay_payment_id,
+              paymentStatus: 'success',
+              status: 'confirmed',
+              updatedAt: serverTimestamp()
+            });
+
+            // Only clear cart after successful payment
+            await clearCart();
+            toast.success('Order placed successfully!');
+            navigate(`/orders/${orderId}`);
+          } catch (error) {
+            console.error('Payment verification error:', error);
+            toast.error('Payment successful but order update failed. Please contact support.');
+          }
+        },
+        modal: {
+          ondismiss: async function() {
+            try {
+              const orderRef = doc(db, 'orders', orderId);
+              await updateDoc(orderRef, {
+                paymentStatus: 'cancelled',
+                status: 'cancelled',
+                updatedAt: serverTimestamp()
+              });
+              toast.error('Payment cancelled');
+            } catch (error) {
+              console.error('Error updating cancelled order:', error);
+            } finally {
+              setIsProcessing(false);
+            }
+          }
+        },
+        theme: {
+          color: '#EF4444'
+        }
+      };
+
+      const razorpayInstance = new (window as any).Razorpay(options);
+      razorpayInstance.open();
+    } catch (error) {
+      console.error('Payment initialization error:', error);
+      toast.error('Failed to initialize payment. Please try again.');
+      setIsProcessing(false);
+    }
+  };
+
   const handleCheckout = async () => {
     if (!user) {
       toast.error('Please login to continue');
@@ -61,16 +146,19 @@ const Cart = () => {
       return;
     }
 
+    if (items.length === 0) {
+      toast.error('Your cart is empty');
+      return;
+    }
+
     try {
       setIsProcessing(true);
-      const orderId = `ORDER_${Date.now()}_${user.id}`;
-      const finalAmount = totalAmount + (paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE);
 
-      // First create the order in Firestore
+      // Create order first
       const orderRef = await addDoc(collection(db, 'orders'), {
         userId: user.id,
         items: items,
-        totalAmount: finalAmount,
+        totalAmount: totalAmount + (paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE),
         address: address,
         status: 'pending',
         paymentStatus: 'pending',
@@ -78,99 +166,27 @@ const Cart = () => {
         userName: user.name,
         userEmail: user.email || '',
         userPhone: user.phone || '',
-        orderId: orderId
+        orderId: `ORDER_${Date.now()}_${user.id}`
       });
 
-      if (paymentMethod === 'ONLINE') {
-        // Initiate Razorpay payment
-        await handlePayment(finalAmount, orderId);
-      } else {
-        // For COD, directly proceed
-        toast.success('Order placed successfully!');
-        navigate('/orders');
-      }
-
-      // Clear cart in both cases
-      clearCart();
+      // Initialize payment after order creation
+      await handlePayment(totalAmount + (paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE), orderRef.id);
     } catch (error) {
       console.error('Checkout error:', error);
       toast.error('Checkout failed. Please try again.');
-    } finally {
       setIsProcessing(false);
     }
   };
 
-  const handlePayment = async (amount: number, orderId: string) => {
-    try {
-      // Load Razorpay script
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      document.body.appendChild(script);
-
-      script.onload = () => {
-        const options = {
-          key: RAZORPAY_CONFIG.key_id,
-          amount: amount * 100, // amount in paisa
-          currency: RAZORPAY_CONFIG.currency,
-          name: RAZORPAY_CONFIG.name,
-          description: `Order #${orderId}`,
-          handler: async (response: any) => {
-            try {
-              // Update the order with payment details
-              await updateOrderPaymentStatus(orderId, {
-                paymentId: response.razorpay_payment_id,
-                status: 'success'
-              });
-
-              toast.success('Payment successful!');
-              clearCart();
-              navigate('/orders');
-            } catch (error) {
-              console.error('Payment update error:', error);
-              toast.error('Error updating payment status');
-            }
-          },
-          prefill: {
-            name: user?.displayName || '',
-            email: user?.email || '',
-            contact: user?.phone || ''
-          },
-          theme: {
-            color: '#EF4444'
-          },
-          modal: {
-            ondismiss: function() {
-              toast.error('Payment cancelled');
-            }
-          }
-        };
-
-        const razorpayInstance = new (window as any).Razorpay(options);
-        razorpayInstance.open();
-      };
-
-      script.onerror = () => {
-        toast.error('Failed to load payment gateway');
-      };
-    } catch (error) {
-      console.error('Payment error:', error);
-      toast.error('Payment failed. Please try again.');
-    }
-  };
-
-  // Function to update order payment status
-  const updateOrderPaymentStatus = async (orderId: string, paymentDetails: { paymentId: string, status: string }) => {
-    try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, {
-        paymentStatus: paymentDetails.status,
-        paymentId: paymentDetails.paymentId,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Error updating payment status:', error);
-      throw error;
-    }
+  // Calculate expected delivery time (30-45 minutes from now)
+  const calculateExpectedDelivery = () => {
+    const now = new Date();
+    const minDeliveryTime = new Date(now.getTime() + 30 * 60000); // 30 minutes
+    const maxDeliveryTime = new Date(now.getTime() + 45 * 60000); // 45 minutes
+    return {
+      min: minDeliveryTime,
+      max: maxDeliveryTime
+    };
   };
 
   if (items.length === 0) {
