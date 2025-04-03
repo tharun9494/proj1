@@ -1,6 +1,6 @@
   import React, { useState, useEffect } from 'react';
   import { motion } from 'framer-motion';
-  import { ShoppingBag, Users, CheckCircle, Package, Plus, Trash2, Edit, Database, TrendingUp, Calendar, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
+  import { ShoppingBag, Users, CheckCircle, Package, Plus, Trash2, Edit, Database, TrendingUp, Calendar, MessageCircle, ChevronDown, ChevronUp, Phone } from 'lucide-react';
   import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, onSnapshot, Timestamp, orderBy } from 'firebase/firestore';
   import { db } from '../../config/firebase';
   import { useAuth } from '../../context/AuthContext';
@@ -27,6 +27,7 @@
     createdAt: any;
     userName: string;
     userPhone: string;
+    alternativePhone?: string;
     address: {
       street: string;
       city: string;
@@ -34,6 +35,7 @@
       landmark?: string;
     };
     paymentStatus: 'success' | 'pending' | 'failed';
+    paymentMethod: 'ONLINE' | 'COD';
   }
 
   interface Message {
@@ -73,6 +75,7 @@
     const [searchQuery, setSearchQuery] = useState('');
     const [showAllItems, setShowAllItems] = useState(false);
     const ITEMS_PER_PAGE = 5; // Number of items to show initially
+    const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
     useEffect(() => {
       if (isAdmin) {
@@ -113,7 +116,6 @@
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Listen for all orders and filter in memory
       const ordersQuery = query(collection(db, 'orders'));
 
       const unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
@@ -122,10 +124,13 @@
           ...doc.data()
         })) as Order[];
 
-        // Filter today's orders
+        // Filter today's orders - Include both successful payments and COD orders
         const todayOrdersList = allOrders.filter(order => {
           const orderDate = order.createdAt?.toDate();
-          return orderDate >= today && order.paymentStatus === 'success';
+          return orderDate >= today && (
+            order.paymentStatus === 'success' || 
+            (order.paymentMethod === 'COD' && order.paymentStatus === 'pending')
+          );
         });
         setTodayOrders(todayOrdersList);
 
@@ -141,6 +146,68 @@
           return orderDate < today;
         });
         setPastOrders(pastOrdersList);
+
+        // Calculate revenue including COD orders
+        const calculateRevenue = (orders: Order[]) => {
+          return orders.reduce((total, order) => {
+            // Include both successful online payments and all COD orders
+            if (order.paymentStatus === 'success' || order.paymentMethod === 'COD') {
+              return total + (order.totalAmount || 0);
+            }
+            return total;
+          }, 0);
+        };
+
+        // Update order stats with new revenue calculations
+        const newStats = {
+          daily: {
+            total: todayOrdersList.length,
+            completed: todayOrdersList.filter(o => o.status === 'completed').length,
+            revenue: calculateRevenue(todayOrdersList)
+          },
+          weekly: {
+            total: allOrders.filter(o => {
+              const orderDate = o.createdAt?.toDate();
+              const weekAgo = new Date();
+              weekAgo.setDate(weekAgo.getDate() - 7);
+              return orderDate >= weekAgo;
+            }).length,
+            completed: allOrders.filter(o => {
+              const orderDate = o.createdAt?.toDate();
+              const weekAgo = new Date();
+              weekAgo.setDate(weekAgo.getDate() - 7);
+              return orderDate >= weekAgo && o.status === 'completed';
+            }).length,
+            revenue: calculateRevenue(allOrders.filter(o => {
+              const orderDate = o.createdAt?.toDate();
+              const weekAgo = new Date();
+              weekAgo.setDate(weekAgo.getDate() - 7);
+              return orderDate >= weekAgo;
+            }))
+          },
+          monthly: {
+            total: allOrders.filter(o => {
+              const orderDate = o.createdAt?.toDate();
+              const monthAgo = new Date();
+              monthAgo.setMonth(monthAgo.getMonth() - 1);
+              return orderDate >= monthAgo;
+            }).length,
+            completed: allOrders.filter(o => {
+              const orderDate = o.createdAt?.toDate();
+              const monthAgo = new Date();
+              monthAgo.setMonth(monthAgo.getMonth() - 1);
+              return orderDate >= monthAgo && o.status === 'completed';
+            }).length,
+            revenue: calculateRevenue(allOrders.filter(o => {
+              const orderDate = o.createdAt?.toDate();
+              const monthAgo = new Date();
+              monthAgo.setMonth(monthAgo.getMonth() - 1);
+              return orderDate >= monthAgo;
+            }))
+          }
+        };
+
+        setOrderStats(newStats);
       }, (error) => {
         console.error('Error setting up orders listener:', error);
         toast.error('Failed to load orders');
@@ -294,97 +361,117 @@
 
     const renderOrdersList = (orders: Order[], title: string) => (
       <div className="bg-white rounded-lg shadow-md p-4 mt-6">
-        <h3 className="text-xl font-semibold mb-4">{title}</h3>
+        <h3 className="text-xl font-semibold mb-4 sticky top-0 bg-white">{title}</h3>
         {orders.length === 0 ? (
           <p className="text-gray-500">No orders found</p>
         ) : (
-          <div className="space-y-4">
-            {orders.map((order) => (
-              <div key={order.id} className="border rounded-lg p-4 bg-gray-50">
-                {/* Customer Information */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                  <div className="bg-white p-3 rounded-md shadow-sm">
-                    <h4 className="font-semibold text-gray-900 mb-2">Customer Details</h4>
-                    <div className="space-y-1">
-                      <p className="text-sm">
-                        <span className="font-medium">Name:</span> {order.userName}
-                      </p>
-                      <p className="text-sm">
-                        <span className="font-medium">Phone:</span> {order.userPhone}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white p-3 rounded-md shadow-sm">
-                    <h4 className="font-semibold text-gray-900 mb-2">Delivery Address</h4>
-                    <div className="space-y-1 text-sm">
-                      <p>{order.address.street}</p>
-                      <p>{order.address.city}</p>
-                      <p>PIN: {order.address.pincode}</p>
-                      {order.address.landmark && (
-                        <p className="text-gray-600">
-                          <span className="font-medium">Landmark:</span> {order.address.landmark}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Order Details */}
-                <div className="bg-white p-3 rounded-md shadow-sm mb-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-semibold text-gray-900">Order Details</h4>
-                    <div className="text-right">
-                      <p className="font-bold text-lg">₹{order.totalAmount}</p>
-                      <span className={`text-sm px-2 py-1 rounded ${
-                        order.paymentStatus === 'success' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {order.paymentStatus}
-                      </span>
+          <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+            <div className="space-y-2">
+              {orders.map((order) => (
+                <div key={order.id} className="border rounded-lg hover:bg-gray-50 transition-colors">
+                  {/* Collapsed View - Always visible */}
+                  <div 
+                    className="p-3 cursor-pointer"
+                    onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-2 h-2 rounded-full ${
+                          order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+                        }`} />
+                        <div>
+                          <h4 className="font-medium text-sm">{order.userName}</h4>
+                          <p className="text-xs text-gray-500">
+                            {order.items.length} items • ₹{order.totalAmount}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          order.paymentMethod === 'COD' 
+                            ? 'bg-yellow-100 text-yellow-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {order.paymentMethod}
+                        </span>
+                        <ChevronDown 
+                          className={`h-4 w-4 transition-transform ${
+                            expandedOrderId === order.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  <div className="divide-y">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="py-2 flex justify-between items-center">
-                        <div className="flex items-center space-x-2">
-                          <img 
-                            src={item.image} 
-                            alt={item.name} 
-                            className="h-8 w-8 rounded-full object-cover"
-                          />
-                          <div>
-                            <p className="font-medium text-sm">{item.name}</p>
-                            <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+                  {/* Expanded View - Shows when clicked */}
+                  {expandedOrderId === order.id && (
+                    <div className="border-t p-3 bg-gray-50">
+                      {/* Customer Details */}
+                      <div className="grid grid-cols-2 gap-4 mb-3">
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Customer</h5>
+                          <p className="text-sm">{order.userName}</p>
+                          <div className="flex items-center space-x-2">
+                            <p className="text-sm">{order.userPhone}</p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`tel:${order.userPhone}`);
+                              }}
+                              className="text-blue-500 hover:text-blue-600"
+                            >
+                              <Phone className="h-4 w-4" />
+                            </button>
                           </div>
                         </div>
-                        <p className="text-sm font-medium">₹{item.price * item.quantity}</p>
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                          <p className="text-sm">{order.address.street}</p>
+                          <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Action Buttons */}
-                <div className="flex gap-2">
-                  {order.status !== 'completed' && (
-                    <button
-                      onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
-                      className="flex-1 bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 text-sm font-medium"
-                    >
-                      Mark as Completed
-                    </button>
+                      {/* Order Items */}
+                      <div className="mb-3">
+                        <h5 className="text-xs font-medium text-gray-500 mb-1">Items</h5>
+                        <div className="bg-white rounded-md p-2 space-y-1">
+                          {order.items.map((item) => (
+                            <div key={item.id} className="flex justify-between text-sm">
+                              <span>{item.name} × {item.quantity}</span>
+                              <span>₹{item.price * item.quantity}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2 mt-3">
+                        {order.status !== 'completed' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUpdateOrderStatus(order.id, 'completed');
+                            }}
+                            className="flex-1 bg-green-500 text-white py-1.5 px-3 rounded text-sm font-medium hover:bg-green-600"
+                          >
+                            Mark as Completed
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`tel:${order.userPhone}`);
+                          }}
+                          className="flex-1 bg-blue-500 text-white py-1.5 px-3 rounded text-sm font-medium hover:bg-blue-600"
+                        >
+                          Call Customer
+                        </button>
+                      </div>
+                    </div>
                   )}
-                  <button
-                    onClick={() => window.open(`tel:${order.userPhone}`)}
-                    className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 text-sm font-medium"
-                  >
-                    Call Customer
-                  </button>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -522,17 +609,58 @@
           {orderStats && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-6 mb-6">
               {[
-                { title: 'Total Orders', value: orderStats[selectedTimeframe].total },
-                { title: 'Completed Orders', value: orderStats[selectedTimeframe].completed },
-                { title: 'Revenue', value: `₹${orderStats[selectedTimeframe].revenue}` }
+                { 
+                  title: 'Total Orders', 
+                  value: orderStats[selectedTimeframe].total,
+                  icon: <ShoppingBag className="h-5 w-5 text-blue-500" />
+                },
+                { 
+                  title: 'Completed Orders', 
+                  value: orderStats[selectedTimeframe].completed,
+                  icon: <CheckCircle className="h-5 w-5 text-green-500" />
+                },
+                { 
+                  title: 'Total Revenue', 
+                  value: `₹${orderStats[selectedTimeframe].revenue.toLocaleString()}`,
+                  icon: <TrendingUp className="h-5 w-5 text-red-500" />,
+                  tooltip: 'Includes both online payments and COD orders'
+                }
               ].map((stat, index) => (
-                <div key={index} className="bg-gray-50 p-3 md:p-4 rounded-lg">
-                  <h3 className="text-sm md:text-lg font-medium mb-1 md:mb-2">{stat.title}</h3>
-                  <p className="text-lg md:text-3xl font-bold text-gray-900">{stat.value}</p>
+                <div key={index} className="bg-white p-4 rounded-lg shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-600">{stat.title}</h3>
+                    {stat.icon}
+                  </div>
+                  <p className="text-xl font-bold text-gray-900">{stat.value}</p>
+                  {stat.tooltip && (
+                    <p className="text-xs text-gray-500 mt-1">{stat.tooltip}</p>
+                  )}
                 </div>
               ))}
             </div>
           )}
+
+          {/* Add timeframe selector */}
+          <div className="flex justify-end mb-4">
+            <div className="inline-flex rounded-md shadow-sm">
+              {['daily', 'weekly', 'monthly'].map((timeframe) => (
+                <button
+                  key={timeframe}
+                  onClick={() => setSelectedTimeframe(timeframe as 'daily' | 'weekly' | 'monthly')}
+                  className={`px-4 py-2 text-sm font-medium ${
+                    selectedTimeframe === timeframe
+                      ? 'bg-red-500 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  } ${
+                    timeframe === 'daily' ? 'rounded-l-md' : 
+                    timeframe === 'monthly' ? 'rounded-r-md' : ''
+                  } border border-gray-300`}
+                >
+                  {timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Orders Lists */}
           {showTodayOrders && renderOrdersList(todayOrders, "Today's Orders")}

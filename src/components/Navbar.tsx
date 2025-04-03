@@ -20,100 +20,111 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="bg-white shadow-lg sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
+    <nav className="bg-gradient-to-r from-white via-red-50 to-white shadow-lg sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        {/* Main Navbar Content */}
+        <div className="flex justify-between h-14 sm:h-16">
+          {/* Logo and Location Section */}
           <div className="flex items-center">
-            <Link to="/" className="flex-shrink-0 flex items-center">
-            <img src={logo} alt="Pitta's Bawarchi Logo" className="h-12 w-auto" />
-              <span className="text-xl sm:text-2xl italic">
-                <span className="text-red-500">Pitta's</span> <span className="text-green-500">Bawarchi</span>
+            <Link to="/" className="flex-shrink-0 flex items-center group">
+              <div className="relative">
+                <img src={logo} alt="Pitta's Bawarchi Logo" 
+                     className="h-8 w-auto sm:h-12 transition-transform duration-300 " />
+                <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-green-500/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              </div>
+              <span className="text-lg sm:text-2xl italic ml-1 sm:ml-2 font-semibold">
+                <span className="text-red-600 hover:text-red-700 transition-colors duration-300">Pitta's Bawarchi</span> 
+                <span className="text-green-600 hover:text-green-700 transition-colors duration-300 hidden xs:inline"> Bawarchi</span>
               </span>
             </Link>
-            <div className="hidden md:flex items-center ml-8">
-              <MapPin className="text-gray-400" size={20} />
-              <span className="ml-2 text-gray-700">Madanapalle, Andhra Pradesh</span>
+            <div className="hidden md:flex items-center ml-4 lg:ml-8 bg-white/50 px-3 py-1 rounded-full shadow-sm">
+              <MapPin className="text-red-500" size={18} />
+              <span className="ml-1 text-gray-700 text-sm font-medium">Madanapalle</span>
             </div>
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-4 lg:space-x-8">
-            <Link to="/menu" className="text-gray-700 hover:text-red-500 px-3 py-2 rounded-md text-sm font-medium">
-              Menu
-            </Link>
-            <Link to="/orders" className="text-gray-700 hover:text-red-500 px-3 py-2 rounded-md text-sm font-medium">
-              Orders
-            </Link>
-            <Link to="/about" className="text-gray-700 hover:text-red-500 px-3 py-2 rounded-md text-sm font-medium">
-              About Us
-            </Link>
-            <Link to="/contact" className="text-gray-700 hover:text-red-500 px-3 py-2 rounded-md text-sm font-medium">
-              Contact Us
-            </Link>
-            <Link to="/cart" className="relative text-gray-700 hover:text-red-500">
-              <ShoppingBag size={24} />
+          <div className="hidden md:flex items-center space-x-1 lg:space-x-4">
+            {[
+              { to: "/menu", label: "Menu" },
+              { to: "/orders", label: "Orders" },
+              { to: "/about", label: "About" },
+              { to: "/contact", label: "Contact" }
+            ].map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="relative text-gray-700 hover:text-red-500 px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-300 hover:bg-red-50 group"
+              >
+                {link.label}
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-red-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300"></span>
+              </Link>
+            ))}
+            
+            <Link to="/cart" className="relative text-gray-700 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors duration-300">
+              <ShoppingBag size={20} />
               {totalItems > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow-md"
+                >
                   {totalItems}
-                </span>
+                </motion.span>
               )}
             </Link>
+
             {user ? (
               <div className="relative group">
-                <button className="text-gray-700 hover:text-red-500 flex items-center space-x-2">
-                  <User size={24} />
+                <button className="text-gray-700 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors duration-300">
+                  <User size={20} />
                 </button>
-                <div className="absolute right-0 w-48 mt-2 py-2 bg-white rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute right-0 w-48 mt-2 py-2 bg-white rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 border border-red-100">
                   {isAdmin && (
-                    <Link
-                      to="/admin"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-500"
-                    >
+                    <Link to="/admin" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-red-50 hover:to-transparent hover:text-red-600 transition-colors duration-200">
                       Admin Dashboard
                     </Link>
                   )}
-                  <Link
-                    to="/profile"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-500"
-                  >
+                  <Link to="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-red-50 hover:to-transparent hover:text-red-600 transition-colors duration-200">
                     Profile
                   </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-500"
-                  >
+                  <button onClick={handleLogout} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-red-50 hover:to-transparent hover:text-red-600 transition-colors duration-200">
                     Logout
                   </button>
                 </div>
               </div>
             ) : (
-              <Link to="/login" className="text-gray-700 hover:text-red-500">
-                <User size={24} />
+              <Link to="/login" className="text-gray-700 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors duration-300">
+                <User size={20} />
               </Link>
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
-            <Link to="/cart" className="relative text-gray-700 hover:text-red-500 mr-4">
-              <ShoppingBag size={24} />
+          {/* Mobile Controls */}
+          <div className="md:hidden flex items-center space-x-2">
+            <Link to="/cart" className="relative text-gray-700 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors duration-300">
+              <ShoppingBag size={20} />
               {totalItems > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow-md"
+                >
                   {totalItems}
-                </span>
+                </motion.span>
               )}
             </Link>
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-red-500 focus:outline-none"
+              className="p-2 rounded-full text-gray-700 hover:text-red-500 hover:bg-red-50 transition-colors duration-300 focus:outline-none"
             >
-              {isOpen ? <X size={24} /> : <Menu size={24} />}
+              {isOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile menu */}
+      {/* Mobile Menu */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -121,55 +132,48 @@ const Navbar = () => {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden bg-white border-t border-gray-100"
+            className="md:hidden bg-gradient-to-b from-white to-red-50 border-t border-red-100"
           >
-            <div className="px-2 pt-2 pb-3 space-y-1">
-              <div className="flex items-center px-3 py-2">
-                <MapPin className="text-gray-400" size={20} />
-                <span className="ml-2 text-gray-700 text-sm">Madanapalle, Andhra Pradesh</span>
+            <div className="px-2 pt-1 pb-2 space-y-1">
+              <div className="flex items-center px-3 py-2 text-sm bg-white/50 rounded-full shadow-sm mb-2">
+                <MapPin className="text-red-500" size={16} />
+                <span className="ml-2 text-gray-700 font-medium">Madanapalle</span>
               </div>
-              <Link
-                to="/menu"
-                className="text-gray-700 hover:text-red-500 block px-3 py-2 rounded-md text-base font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                Menu
-              </Link>
-              <Link
-                to="/orders"
-                className="text-gray-700 hover:text-red-500 block px-3 py-2 rounded-md text-base font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                Orders
-              </Link>
-              <Link
-                to="/about"
-                className="text-gray-700 hover:text-red-500 block px-3 py-2 rounded-md text-base font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                About Us
-              </Link>
-              <Link
-                to="/contact"
-                className="text-gray-700 hover:text-red-500 block px-3 py-2 rounded-md text-base font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                Contact Us
-              </Link>
+              
+              {/* Mobile Navigation Links */}
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { to: "/menu", label: "Menu" },
+                  { to: "/orders", label: "Orders" },
+                  { to: "/about", label: "About" },
+                  { to: "/contact", label: "Contact" }
+                ].map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className="text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+
+              {/* User Actions */}
               {user ? (
-                <>
+                <div className="grid grid-cols-2 gap-2 mt-2">
                   {isAdmin && (
                     <Link
                       to="/admin"
-                      className="text-gray-700 hover:text-red-500 block px-3 py-2 rounded-md text-base font-medium"
+                      className="text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
                       onClick={() => setIsOpen(false)}
                     >
-                      Admin Dashboard
+                      Admin
                     </Link>
                   )}
                   <Link
                     to="/profile"
-                    className="text-gray-700 hover:text-red-500 block px-3 py-2 rounded-md text-base font-medium"
+                    className="text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
                     onClick={() => setIsOpen(false)}
                   >
                     Profile
@@ -179,15 +183,15 @@ const Navbar = () => {
                       handleLogout();
                       setIsOpen(false);
                     }}
-                    className="text-gray-700 hover:text-red-500 block w-full text-left px-3 py-2 rounded-md text-base font-medium"
+                    className="col-span-2 text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
                   >
                     Logout
                   </button>
-                </>
+                </div>
               ) : (
                 <Link
                   to="/login"
-                  className="text-gray-700 hover:text-red-500 block px-3 py-2 rounded-md text-base font-medium"
+                  className="block text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
                   onClick={() => setIsOpen(false)}
                 >
                   Login
