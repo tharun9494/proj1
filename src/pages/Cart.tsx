@@ -17,6 +17,14 @@ const DELIVERY_FEE = {
   COD: 40
 };
 
+// Update delivery fee logic
+const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD') => {
+  if (subtotal >= 500) {
+    return 0; // Free delivery for orders above ₹500
+  }
+  return 40; // ₹40 delivery fee for orders below ₹500
+};
+
 const Cart = () => {
   const { items, updateQuantity, removeFromCart, totalAmount, totalItems, clearCart } = useCart();
   const { user } = useAuth();
@@ -135,6 +143,11 @@ const Cart = () => {
     }
   };
 
+  // Calculate delivery fee based on total and payment method
+  const deliveryFee = calculateDeliveryFee(totalAmount, paymentMethod);
+  const finalAmount = totalAmount + deliveryFee;
+
+  // Modify handleCheckout function
   const handleCheckout = async () => {
     if (!user) {
       toast.error('Please login to continue');
@@ -158,10 +171,13 @@ const Cart = () => {
       const orderRef = await addDoc(collection(db, 'orders'), {
         userId: user.id,
         items: items,
-        totalAmount: totalAmount + (paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE),
+        totalAmount: totalAmount,
+        deliveryFee: deliveryFee,
+        finalAmount: finalAmount,
         address: address,
-        status: 'pending',
-        paymentStatus: 'pending',
+        status: paymentMethod === 'COD' ? 'confirmed' : 'pending', // Auto-confirm COD orders
+        paymentStatus: paymentMethod === 'COD' ? 'pending' : 'pending',
+        paymentMethod: paymentMethod,
         createdAt: serverTimestamp(),
         userName: user.name,
         userEmail: user.email || '',
@@ -169,8 +185,15 @@ const Cart = () => {
         orderId: `ORDER_${Date.now()}_${user.id}`
       });
 
-      // Initialize payment after order creation
-      await handlePayment(totalAmount + (paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE), orderRef.id);
+      if (paymentMethod === 'COD') {
+        // For COD, directly process the order without payment
+        await clearCart();
+        toast.success('Order placed successfully!');
+        navigate(`/orders/${orderRef.id}`);
+      } else {
+        // For online payment, proceed with Razorpay
+        await handlePayment(finalAmount, orderRef.id);
+      }
     } catch (error) {
       console.error('Checkout error:', error);
       toast.error('Checkout failed. Please try again.');
@@ -347,47 +370,7 @@ const Cart = () => {
               </div>
             </div>
 
-            {/* Payment Method Section - Compact for mobile */}
-            <div className="mt-4 md:mt-8 bg-white rounded-lg shadow-sm md:shadow p-4 md:p-6">
-              <h2 className="text-base md:text-lg font-medium text-gray-900 mb-3 md:mb-4">Payment Method</h2>
-              <div className="space-y-3 md:space-y-4">
-                <label className="flex items-center p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="ONLINE"
-                    checked={paymentMethod === 'ONLINE'}
-                    onChange={(e) => setPaymentMethod('ONLINE')}
-                    className="h-4 w-4 text-red-500 focus:ring-red-500 border-gray-300"
-                  />
-                  <div className="ml-3 flex items-center">
-                    <CreditCard className="h-5 w-5 md:h-6 md:w-6 text-gray-400 mr-2" />
-                    <div>
-                      <p className="text-xs md:text-sm font-medium text-gray-900">Online Payment</p>
-                      <p className="text-xs text-gray-500">Free delivery</p>
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex items-center p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="COD"
-                    checked={paymentMethod === 'COD'}
-                    onChange={(e) => setPaymentMethod('COD')}
-                    className="h-4 w-4 text-red-500 focus:ring-red-500 border-gray-300"
-                  />
-                  <div className="ml-3 flex items-center">
-                    <Truck className="h-5 w-5 md:h-6 md:w-6 text-gray-400 mr-2" />
-                    <div>
-                      <p className="text-xs md:text-sm font-medium text-gray-900">Cash on Delivery</p>
-                      <p className="text-xs text-gray-500">₹40 delivery fee</p>
-                    </div>
-                  </div>
-                </label>
-              </div>
-            </div>
+            
           </div>
 
           {/* Order Summary Section - Sticky on mobile */}
@@ -400,20 +383,68 @@ const Cart = () => {
                     <dt className="text-xs md:text-sm text-gray-600">Subtotal ({totalItems} items)</dt>
                     <dd className="text-xs md:text-sm font-medium text-gray-900">₹{totalAmount}</dd>
                   </div>
-                  <div className="py-2 md:py-4 flex items-center justify-between">
-                    <dt className="text-xs md:text-sm text-gray-600">Delivery Fee</dt>
-                    <dd className="text-xs md:text-sm font-medium text-gray-900">
-                      ₹{paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE}
-                    </dd>
+                  
+                  {/* Delivery Fee Section with Info */}
+                  <div className="py-2 md:py-4">
+                    <div className="flex items-center justify-between">
+                      <dt className="text-xs md:text-sm text-gray-600">Delivery Fee</dt>
+                      <dd className="text-xs md:text-sm font-medium text-gray-900">
+                        {deliveryFee === 0 ? (
+                          <span className="text-green-600">FREE</span>
+                        ) : (
+                          `₹${deliveryFee}`
+                        )}
+                      </dd>
+                    </div>
+                    {totalAmount < 500 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Add items worth ₹{500 - totalAmount} more for free delivery
+                      </p>
+                    )}
                   </div>
+
                   <div className="py-2 md:py-4 flex items-center justify-between">
                     <dt className="text-sm md:text-base font-medium text-gray-900">Order Total</dt>
                     <dd className="text-sm md:text-base font-medium text-gray-900">
-                      ₹{totalAmount + (paymentMethod === 'COD' ? DELIVERY_FEE.COD : DELIVERY_FEE.ONLINE)}
+                      ₹{finalAmount}
                     </dd>
                   </div>
                 </dl>
               </div>
+
+              {/* Payment Method Section */}
+              <div className="mt-4 space-y-3 md:space-y-4">
+                <label className="flex items-center p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="ONLINE"
+                    checked={paymentMethod === 'ONLINE'}
+                    onChange={(e) => setPaymentMethod('ONLINE')}
+                    className="h-4 w-4 text-red-500 focus:ring-red-500 border-gray-300"
+                  />
+                  <div className="ml-3">
+                    <p className="text-xs md:text-sm font-medium text-gray-900">Online Payment</p>
+                    <p className="text-xs text-gray-500">Pay now and get instant confirmation</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="COD"
+                    checked={paymentMethod === 'COD'}
+                    onChange={(e) => setPaymentMethod('COD')}
+                    className="h-4 w-4 text-red-500 focus:ring-red-500 border-gray-300"
+                  />
+                  <div className="ml-3">
+                    <p className="text-xs md:text-sm font-medium text-gray-900">Cash on Delivery</p>
+                    <p className="text-xs text-gray-500">Pay when your order arrives</p>
+                  </div>
+                </label>
+              </div>
+
               <button
                 onClick={handleCheckout}
                 disabled={isProcessing || !user}
@@ -427,12 +458,32 @@ const Cart = () => {
                 ) : (
                   <>
                     {user ? (
-                      paymentMethod === 'ONLINE' ? 'Proceed to Pay' : 'Place Order'
+                      paymentMethod === 'ONLINE' ? 'Pay ₹' + finalAmount : 'Place Order'
                     ) : 'Login to Checkout'}
                     <ArrowRight className="ml-2 h-4 w-4 md:h-5 md:w-5" />
                   </>
                 )}
               </button>
+
+              {/* Free Delivery Progress Bar */}
+              {totalAmount < 500 && (
+                <div className="mt-4">
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-green-500 h-2.5 rounded-full transition-all duration-500"
+                      style={{ width: `${(totalAmount / 500) * 100}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-xs text-center mt-2 text-gray-600">
+                    {totalAmount < 500 ? (
+                      `Add ₹${500 - totalAmount} more for free delivery`
+                    ) : (
+                      'Yay! You get free delivery'
+                    )}
+                  </p>
+                </div>
+              )}
+
               {!user && (
                 <p className="mt-2 text-xs md:text-sm text-gray-500 text-center">
                   Please{' '}
