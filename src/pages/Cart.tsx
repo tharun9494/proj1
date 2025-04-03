@@ -35,7 +35,9 @@ const Cart = () => {
     street: '',
     city: '',
     pincode: '',
-    landmark: ''
+    landmark: '',
+    phone: '',
+    alternativePhone: ''
   });
   const [useProfileAddress, setUseProfileAddress] = useState(true);
 
@@ -44,17 +46,34 @@ const Cart = () => {
       if (user?.id) {
         try {
           const userData = await getUserData(user.id);
-          if (userData?.address) {
-            setAddress(userData.address);
+          console.log('Fetched user data:', userData); // Debug log
+          if (userData) {
+            setAddress(prev => ({
+              ...prev,
+              street: userData.address?.street || '',
+              city: userData.address?.city || '',
+              pincode: userData.address?.pincode || '',
+              landmark: userData.address?.landmark || '',
+              phone: userData.phone || '', // Set phone from user data
+              alternativePhone: userData.alternativePhone || '' // Set alternative phone from user data
+            }));
           }
         } catch (error) {
           console.error('Error loading user address:', error);
+          toast.error('Failed to load your saved address');
         }
       }
     };
 
     if (useProfileAddress) {
       loadUserAddress();
+    } else {
+      // Reset phone numbers when not using profile address
+      setAddress(prev => ({
+        ...prev,
+        phone: '',
+        alternativePhone: ''
+      }));
     }
   }, [user, useProfileAddress]);
 
@@ -167,6 +186,9 @@ const Cart = () => {
     try {
       setIsProcessing(true);
 
+      // Fetch complete user data to get both phone numbers
+      const userData = await getUserData(user.id);
+
       // Create order first
       const orderRef = await addDoc(collection(db, 'orders'), {
         userId: user.id,
@@ -175,13 +197,14 @@ const Cart = () => {
         deliveryFee: deliveryFee,
         finalAmount: finalAmount,
         address: address,
-        status: paymentMethod === 'COD' ? 'confirmed' : 'pending', // Auto-confirm COD orders
+        status: paymentMethod === 'COD' ? 'confirmed' : 'pending',
         paymentStatus: paymentMethod === 'COD' ? 'pending' : 'pending',
         paymentMethod: paymentMethod,
         createdAt: serverTimestamp(),
         userName: user.name,
         userEmail: user.email || '',
-        userPhone: user.phone || '',
+        userPhone: userData?.phone || user.phone || '',
+        alternativePhone: userData?.alternativePhone || '',
         orderId: `ORDER_${Date.now()}_${user.id}`
       });
 
@@ -317,9 +340,69 @@ const Cart = () => {
               )}
 
               <div className="grid grid-cols-1 gap-4 md:gap-6">
+                {/* Phone Numbers Section */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6">
+                  <div>
+                    <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
+                      Phone Number *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        value={address.phone}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setAddress(prev => ({ ...prev, phone: value }));
+                        }}
+                        disabled={useProfileAddress}
+                        className={`mt-1 block w-full rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 text-sm
+                          ${useProfileAddress ? 'bg-gray-50 border-gray-300' : 'border-gray-300'}
+                          ${!address.phone && 'border-red-300'}`}
+                        placeholder="Enter delivery phone number"
+                        maxLength={10}
+                      />
+                      {address.phone && (
+                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-500">
+                          {address.phone.length}/10
+                        </span>
+                      )}
+                    </div>
+                    {!address.phone && (
+                      <p className="mt-1 text-xs text-red-500">Phone number is required</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
+                      Alternative Phone
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        value={address.alternativePhone}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setAddress(prev => ({ ...prev, alternativePhone: value }));
+                        }}
+                        disabled={useProfileAddress}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm 
+                          focus:ring-red-500 focus:border-red-500 text-sm
+                          ${useProfileAddress ? 'bg-gray-50' : ''}`}
+                        placeholder="Enter alternative number"
+                        maxLength={10}
+                      />
+                      {address.alternativePhone && (
+                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-500">
+                          {address.alternativePhone.length}/10
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Existing Address Fields */}
                 <div>
                   <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
-                    Street Address
+                    Street Address *
                   </label>
                   <input
                     type="text"
@@ -332,7 +415,7 @@ const Cart = () => {
                 <div className="grid grid-cols-2 gap-3 md:gap-6">
                   <div>
                     <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
-                      City
+                      City *
                     </label>
                     <input
                       type="text"
@@ -344,7 +427,7 @@ const Cart = () => {
                   </div>
                   <div>
                     <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
-                      Pincode
+                      Pincode *
                     </label>
                     <input
                       type="text"
