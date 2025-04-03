@@ -20,31 +20,37 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="bg-gradient-to-r from-white via-red-50 to-white shadow-lg sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+    <nav className="bg-white shadow-lg sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4">
         {/* Main Navbar Content */}
-        <div className="flex justify-between h-14 sm:h-16">
-          {/* Logo and Location Section */}
-          <div className="flex items-center">
-            <Link to="/" className="flex-shrink-0 flex items-center group">
-              <div className="relative">
-                <img src={logo} alt="Pitta's Bawarchi Logo" 
-                     className="h-8 w-auto sm:h-12 transition-transform duration-300 " />
-                <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-green-500/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        <div className="flex justify-between h-16">
+          {/* Logo and Hotel Name Section */}
+          <div className="flex items-center flex-1">
+            <Link to="/" className="flex items-center">
+              <img 
+                src={logo} 
+                alt="Logo" 
+                className="h-10 w-10 rounded-full"
+              />
+              <div className="ml-2 flex flex-col">
+                <span className="text-lg sm:text-xl font-bold text-red-600">
+                  Pitta's
+                </span>
+                <span className="text-sm sm:text-base font-semibold text-green-600 -mt-1">
+                  Bawarchi
+                </span>
               </div>
-              <span className="text-lg sm:text-2xl italic ml-1 sm:ml-2 font-semibold">
-                <span className="text-red-600 hover:text-red-700 transition-colors duration-300">Pitta's Bawarchi</span> 
-                <span className="text-green-600 hover:text-green-700 transition-colors duration-300 hidden xs:inline"> Bawarchi</span>
-              </span>
             </Link>
-            <div className="hidden md:flex items-center ml-4 lg:ml-8 bg-white/50 px-3 py-1 rounded-full shadow-sm">
-              <MapPin className="text-red-500" size={18} />
-              <span className="ml-1 text-gray-700 text-sm font-medium">Madanapalle</span>
+            
+            {/* Location - Hidden on mobile */}
+            <div className="hidden md:flex items-center ml-4 bg-gray-50 px-3 py-1 rounded-full">
+              <MapPin className="h-4 w-4 text-red-500" />
+              <span className="ml-1 text-sm text-gray-600">Madanapalle</span>
             </div>
           </div>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-1 lg:space-x-4">
+          {/* Desktop Navigation - Hidden on Mobile */}
+          <div className="hidden md:flex items-center space-x-4">
             {[
               { to: "/menu", label: "Menu" },
               { to: "/orders", label: "Orders" },
@@ -100,15 +106,15 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* Mobile Controls */}
-          <div className="md:hidden flex items-center space-x-2">
-            <Link to="/cart" className="relative text-gray-700 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors duration-300">
-              <ShoppingBag size={20} />
+          {/* Mobile Right Section */}
+          <div className="flex items-center space-x-4 md:hidden">
+            <Link to="/cart" className="relative">
+              <ShoppingBag className="h-6 w-6 text-gray-700" />
               {totalItems > 0 && (
                 <motion.span
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow-md"
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold"
                 >
                   {totalItems}
                 </motion.span>
@@ -116,9 +122,9 @@ const Navbar = () => {
             </Link>
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="p-2 rounded-full text-gray-700 hover:text-red-500 hover:bg-red-50 transition-colors duration-300 focus:outline-none"
+              className="text-gray-700"
             >
-              {isOpen ? <X size={20} /> : <Menu size={20} />}
+              {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
           </div>
         </div>
@@ -128,75 +134,115 @@ const Navbar = () => {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden bg-gradient-to-b from-white to-red-50 border-t border-red-100"
+            className="fixed inset-0 top-16 bg-white z-50"
           >
-            <div className="px-2 pt-1 pb-2 space-y-1">
-              <div className="flex items-center px-3 py-2 text-sm bg-white/50 rounded-full shadow-sm mb-2">
-                <MapPin className="text-red-500" size={16} />
-                <span className="ml-2 text-gray-700 font-medium">Madanapalle</span>
+            <div className="p-4 space-y-4">
+              {/* Hotel Name and Location for Mobile */}
+              <div className="text-center pb-4 border-b border-gray-200">
+                <h1 className="text-xl font-bold text-red-600">Pitta's Bawarchi</h1>
+                <div className="flex items-center justify-center mt-2 text-sm text-gray-600">
+                  <MapPin className="h-4 w-4 text-red-500" />
+                  <span className="ml-1">Madanapalle</span>
+                </div>
               </div>
-              
-              {/* Mobile Navigation Links */}
-              <div className="grid grid-cols-2 gap-2">
+
+              {/* Navigation Links */}
+              <div className="space-y-2">
                 {[
-                  { to: "/menu", label: "Menu" },
-                  { to: "/orders", label: "Orders" },
-                  { to: "/about", label: "About" },
-                  { to: "/contact", label: "Contact" }
+                  { to: "/menu", label: "Menu", icon: "🍽️" },
+                  { to: "/orders", label: "Orders", icon: "📋" },
+                  { to: "/about", label: "About", icon: "ℹ️" },
+                  { to: "/contact", label: "Contact", icon: "📞" }
                 ].map((link) => (
                   <Link
                     key={link.to}
                     to={link.to}
-                    className="text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
                     onClick={() => setIsOpen(false)}
+                    className="flex items-center w-full p-3 rounded-lg bg-gray-50 hover:bg-red-50 transition-colors"
                   >
-                    {link.label}
+                    <span className="mr-3">{link.icon}</span>
+                    <span className="text-gray-700 font-medium">{link.label}</span>
                   </Link>
                 ))}
               </div>
 
-              {/* User Actions */}
-              {user ? (
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {isAdmin && (
+              {/* User Section */}
+              <div className="pt-4 border-t border-gray-200">
+                {user ? (
+                  <div className="space-y-2">
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setIsOpen(false)}
+                        className="flex items-center w-full p-3 rounded-lg bg-red-50 hover:bg-red-100 transition-colors"
+                      >
+                        <span className="mr-3">👑</span>
+                        <span className="text-red-600 font-medium">Admin Dashboard</span>
+                      </Link>
+                    )}
                     <Link
-                      to="/admin"
-                      className="text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                      to="/profile"
                       onClick={() => setIsOpen(false)}
+                      className="flex items-center w-full p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
                     >
-                      Admin
+                      <span className="mr-3">👤</span>
+                      <span className="text-gray-700 font-medium">Profile</span>
                     </Link>
-                  )}
+                    <button
+                      onClick={() => {
+                        handleLogout();
+                        setIsOpen(false);
+                      }}
+                      className="flex items-center w-full p-3 rounded-lg bg-gray-50 hover:bg-red-50 transition-colors"
+                    >
+                      <span className="mr-3">🚪</span>
+                      <span className="text-gray-700 font-medium">Logout</span>
+                    </button>
+                  </div>
+                ) : (
                   <Link
-                    to="/profile"
-                    className="text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                    to="/login"
                     onClick={() => setIsOpen(false)}
+                    className="flex items-center w-full p-3 rounded-lg bg-red-50 hover:bg-red-100 transition-colors"
                   >
-                    Profile
+                    <span className="mr-3">🔐</span>
+                    <span className="text-red-600 font-medium">Login</span>
                   </Link>
-                  <button
-                    onClick={() => {
-                      handleLogout();
-                      setIsOpen(false);
-                    }}
-                    className="col-span-2 text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
-                  >
-                    Logout
-                  </button>
+                )}
+              </div>
+
+              {/* Cart Link */}
+              <Link
+                to="/cart"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center justify-between w-full p-3 rounded-lg bg-gray-50 hover:bg-red-50 transition-colors"
+              >
+                <div className="flex items-center">
+                  <span className="mr-3">🛒</span>
+                  <span className="text-gray-700 font-medium">Cart</span>
                 </div>
-              ) : (
-                <Link
-                  to="/login"
-                  className="block text-gray-700 hover:text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium text-center bg-white/70 hover:bg-red-50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
-                  onClick={() => setIsOpen(false)}
-                >
-                  Login
-                </Link>
-              )}
+                {totalItems > 0 && (
+                  <span className="bg-red-500 text-white px-2 py-1 rounded-full text-sm">
+                    {totalItems}
+                  </span>
+                )}
+              </Link>
+            </div>
+
+            {/* Bottom Branding */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gray-50">
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-600">
+                  Pitta's Bawarchi
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Authentic Indian Cuisine
+                </p>
+              </div>
             </div>
           </motion.div>
         )}

@@ -23,6 +23,15 @@ interface Order {
   createdAt: any;
   paymentStatus: string;
   paymentMethod: 'ONLINE' | 'COD';
+  userPhone: string;
+  alternativePhone?: string;
+  userName: string;
+  address: {
+    street: string;
+    city: string;
+    pincode: string;
+    landmark?: string;
+  };
 }
 
 const Orders = () => {
@@ -163,6 +172,16 @@ const Orders = () => {
                     <p className="text-sm text-gray-500">
                       {order.createdAt?.toDate().toLocaleDateString()}
                     </p>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-600">
+                        Phone: {order.userPhone || 'N/A'}
+                      </p>
+                      {order.alternativePhone && (
+                        <p className="text-sm text-gray-600">
+                          Alt. Phone: {order.alternativePhone}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
