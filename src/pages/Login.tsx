@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Download, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -143,7 +143,7 @@ const Login = () => {
               )}
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col space-y-4">
               <div className="flex items-center">
                 <input
                   id="remember_me"
@@ -157,11 +157,67 @@ const Login = () => {
                 </label>
               </div>
 
-              <div className="text-sm">
-                <Link to="/forgot-password" className="font-medium text-red-500 hover:text-red-600">
+              <div className="flex items-center space-x-4 text-sm">
+                <Link 
+                  to="/forgot-password" 
+                  className="font-medium text-red-500 hover:text-red-600"
+                >
                   Forgot your password?
                 </Link>
+                <div className="h-4 w-px bg-gray-300" />
+                <a
+                  href="/pittas-app.apk"
+                  download
+                  className="flex items-center font-medium text-red-500 hover:text-red-600 group"
+                >
+                  <div className="flex items-center">
+                    <span>Download App</span>
+                    <svg 
+                      className="ml-1 h-4 w-4" 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
+                      />
+                    </svg>
+                  </div>
+                </a>
               </div>
+
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Smartphone className="h-5 w-5 text-red-500" />
+                    <span className="text-sm font-medium text-gray-900">Get Our Mobile App</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 w-full text-center text-xs text-gray-500">
+                    <div className="p-2 rounded-md bg-gray-50">
+                      <p className="font-medium text-gray-900">Fast Delivery</p>
+                      <p>Track your orders live</p>
+                    </div>
+                    <div className="p-2 rounded-md bg-gray-50">
+                      <p className="font-medium text-gray-900">Easy Ordering</p>
+                      <p>Order in few taps</p>
+                    </div>
+                  </div>
+
+                  <motion.p 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.2 }}
+                    className="text-xs text-red-500 text-center"
+                  >
+                  
+                  </motion.p>
+                </div>
+              </div>
+
             </div>
 
             <div>
