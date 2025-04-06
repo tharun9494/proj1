@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, Download, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 
 const Login = () => {
   const { login } = useAuth();
@@ -16,6 +17,49 @@ const Login = () => {
     password: '',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [appDownloadUrl, setAppDownloadUrl] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  useEffect(() => {
+    const fetchAppDownloadUrl = async () => {
+      try {
+        const storage = getStorage();
+        const appRef = ref(storage, 'app/app-release.apk');
+        const url = await getDownloadURL(appRef);
+        setAppDownloadUrl(url);
+      } catch (error) {
+        console.error('Error fetching app download URL:', error);
+        toast.error('Could not fetch app download link');
+      }
+    };
+
+    fetchAppDownloadUrl();
+  }, []);
+
+  const handleAppDownload = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (!appDownloadUrl) {
+      toast.error('Download link not available');
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      const link = document.createElement('a');
+      link.href = appDownloadUrl;
+      link.download = 'app-release.apk';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('Download started!');
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Download failed. Please try again.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const validateForm = () => {
     let isValid = true;
@@ -165,56 +209,76 @@ const Login = () => {
                   Forgot your password?
                 </Link>
                 <div className="h-4 w-px bg-gray-300" />
-                <a
-                  href="/pittas-app.apk"
-                  download
-                  className="flex items-center font-medium text-red-500 hover:text-red-600 group"
+                <button
+                  onClick={handleAppDownload}
+                  disabled={!appDownloadUrl || isDownloading}
+                  className={`flex items-center font-medium text-red-500 hover:text-red-600 group transition-all duration-200 ${
+                    !appDownloadUrl || isDownloading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
                   <div className="flex items-center">
-                    <span>Download App</span>
-                    <svg 
-                      className="ml-1 h-4 w-4" 
-                      fill="none" 
-                      viewBox="0 0 24 24" 
-                      stroke="currentColor"
-                    >
-                      <path 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        strokeWidth={2} 
-                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
-                      />
-                    </svg>
+                    <span>{isDownloading ? 'Downloading...' : 'Download App'}</span>
+                    {!isDownloading && (
+                      <Download className="ml-1 h-4 w-4 group-hover:scale-110 transition-transform" />
+                    )}
+                    {isDownloading && (
+                      <svg 
+                        className="ml-1 h-4 w-4 animate-spin" 
+                        viewBox="0 0 24 24"
+                      >
+                        <circle 
+                          className="opacity-25" 
+                          cx="12" 
+                          cy="12" 
+                          r="10" 
+                          stroke="currentColor" 
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path 
+                          className="opacity-75" 
+                          fill="currentColor" 
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                    )}
                   </div>
-                </a>
+                </button>
               </div>
 
               <div className="mt-6 pt-4 border-t border-gray-200">
                 <div className="flex flex-col items-center space-y-4">
                   <div className="flex items-center space-x-2">
                     <Smartphone className="h-5 w-5 text-red-500" />
-                    <span className="text-sm font-medium text-gray-900">Get Our Mobile App</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      Get Our Mobile App
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 w-full text-center text-xs text-gray-500">
-                    <div className="p-2 rounded-md bg-gray-50">
+                    <div className="p-3 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
                       <p className="font-medium text-gray-900">Fast Delivery</p>
                       <p>Track your orders live</p>
                     </div>
-                    <div className="p-2 rounded-md bg-gray-50">
+                    <div className="p-3 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
                       <p className="font-medium text-gray-900">Easy Ordering</p>
                       <p>Order in few taps</p>
                     </div>
                   </div>
 
-                  <motion.p 
+                  <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.2 }}
-                    className="text-xs text-red-500 text-center"
+                    className="text-center"
                   >
-                  
-                  </motion.p>
+                    <p className="text-xs text-gray-500">
+                      Download our app for the best experience
+                    </p>
+                    <p className="text-xs text-red-500 mt-1">
+                      ✨ Exclusive app-only offers ✨
+                    </p>
+                  </motion.div>
                 </div>
               </div>
 
