@@ -53,7 +53,7 @@ const Home = () => {
       id: 2,
       title: "Andhra Specials",
       description: "Authentic Andhra cuisine",
-      image: "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=800"
+      image: "https://www.chefkunalkapur.com/wp-content/uploads/2021/03/Gosht-Biryani-1300x868.jpeg?v=1625193165"
     },
     {
       id: 3,
@@ -81,41 +81,117 @@ const Home = () => {
     }
   ];
 
+  // Updated hero images with reliable URLs
+  const heroImages = [
+    {
+      url: "https://images.unsplash.com/photo-1633945274405-b6c8069047b0?auto=format&fit=crop&w=1920",
+      title: "Signature Biryani"
+    },
+    {
+      url: "https://media-cdn2.greatbritishchefs.com/media/x3ykkboh/img16453.whqc_768x512q80fpt472fpl481.jpg",
+      title: "Spicy Chicken"
+    },
+    {
+      url: "https://bfoodale.com/uploads/2021/12/Mutton-Biryani.jpg",
+      title: "Mutton Special"
+    }
+  ];
+
+  // Temporary fallback image
+  const fallbackImage = "https://images.unsplash.com/photo-1633945274405-b6c8069047b0?auto=format&fit=crop&w=1920";
+
+  // Add state for current image
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [imageLoadError, setImageLoadError] = useState(false);
+
+  // Add automatic image swap effect
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setCurrentImageIndex((prevIndex) => 
+        prevIndex === heroImages.length - 1 ? 0 : prevIndex + 1
+      );
+    }, 5000); // Change image every 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   return (
     <div className="min-h-screen">
-      {/* Hero Section - Improved mobile responsiveness */}
-      <section className="relative h-[60vh] md:h-[70vh] bg-gradient-to-b from-black to-transparent">
-        <div className="absolute inset-0">
+      {/* Hero Section */}
+      <section className="relative h-[60vh] md:h-[70vh]">
+        {/* Single Background Image with Fallback */}
+        <div className="absolute inset-0 bg-black">
           <img
-            src="https://images.unsplash.com/photo-1633945274405-b6c8069047b0?auto=format&fit=crop&w=1920"
-            alt="Pitta's Bawarchi Signature Biryani"
-            className="w-full h-full object-cover opacity-60"
+            src={imageLoadError ? fallbackImage : heroImages[currentImageIndex].url}
+            alt={heroImages[currentImageIndex].title}
+            className="w-full h-full object-cover opacity-80"
+            onError={() => setImageLoadError(true)}
           />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 to-black/50" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 h-full flex items-center">
-          <div className="w-full max-w-2xl">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-4 md:space-y-6"
-            >
-              <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold text-white leading-tight">
-                Experience the Authentic Taste of Andhra
-              </h1>
-              <p className="text-base sm:text-lg md:text-xl text-gray-200">
-                Discover our signature biryanis and traditional delicacies
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
+
+        {/* Navigation Dots */}
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-3 z-20">
+          {heroImages.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setCurrentImageIndex(index)}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                currentImageIndex === index 
+                  ? 'w-8 bg-red-500' 
+                  : 'w-2 bg-white/50 hover:bg-white/75'
+              }`}
+              aria-label={`Show image ${index + 1}`}
+            />
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="relative max-w-7xl mx-auto px-4 h-full flex items-center z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="w-full max-w-2xl"
+          >
+            <div className="space-y-4 md:space-y-6">
+              <motion.h1 
+                key={currentImageIndex}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-3xl sm:text-4xl md:text-6xl font-bold text-white leading-tight"
+              >
+                {currentImageIndex === 0 && "Signature Hyderabadi Biryani"}
+                {currentImageIndex === 1 && "Spicy Andhra Chicken"}
+                {currentImageIndex === 2 && "Tender Mutton Specialties"}
+              </motion.h1>
+              <motion.p
+                key={`desc-${currentImageIndex}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-base sm:text-lg md:text-xl text-gray-200"
+              >
+                {currentImageIndex === 0 && "Experience the authentic taste of Hyderabad"}
+                {currentImageIndex === 1 && "Fiery Andhra-style chicken dishes"}
+                {currentImageIndex === 2 && "Perfectly cooked mutton delicacies"}
+              </motion.p>
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8 }}
+                className="flex flex-col sm:flex-row gap-3 md:gap-4"
+              >
                 <Link
                   to="/menu"
-                  className="inline-flex items-center justify-center px-4 py-2 md:px-6 md:py-3 border border-transparent text-sm md:text-base font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+                  className="inline-flex items-center justify-center px-4 py-2 md:px-6 md:py-3 border border-transparent text-sm md:text-base font-medium rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors duration-300"
                 >
-                  View Menu
+                  Explore Menu
                   <ChevronRight className="ml-2 h-4 w-4 md:h-5 md:w-5" />
                 </Link>
-              </div>
-            </motion.div>
-          </div>
+              </motion.div>
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -245,9 +321,9 @@ const Home = () => {
                 viewport={{ once: true }}
                 className="space-y-6"
               >
-                <h2 className="text-3xl font-bold text-gray-900">Meet Chef Pitta Ramesh</h2>
+                <h2 className="text-3xl font-bold text-gray-900">Meet Chef Pitta Mahendra</h2>
                 <p className="text-lg text-gray-600">
-                  With over two decades of culinary expertise, Chef Pitta Ramesh has been the driving force behind Pitta's Bawarchi's success. His passion for authentic Andhra cuisine and commitment to quality has made our restaurant a landmark destination for food lovers.
+                  With over two decades of culinary expertise, Chef Pitta Mahendra has been the driving force behind Pitta's Bawarchi's success. His passion for authentic Andhra cuisine and commitment to quality has made our restaurant a landmark destination for food lovers.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {achievements.map((achievement, index) => (
