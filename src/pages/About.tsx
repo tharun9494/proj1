@@ -52,7 +52,7 @@ const About = () => {
               <h2 className="text-xl md:text-3xl font-bold text-gray-900 mb-3 md:mb-6">Our Story</h2>
               <div className="space-y-2 md:space-y-4 text-sm md:text-base text-gray-600">
                 <p>
-                  Founded in 2011 by Chef Pitta Ramesh, Pitta's Bawarchi began as a small family-run establishment with a big dream: to bring the authentic flavors of Andhra Pradesh to every food lover's plate.
+                  Founded in 2011 by Chef Pitta Mahendra, Pitta's Bawarchi began as a small family-run establishment with a big dream: to bring the authentic flavors of Andhra Pradesh to every food lover's plate.
                 </p>
                 <p>
                   What started as a modest eatery has grown into one of Madanapalle's most beloved restaurants, serving thousands of satisfied customers with our signature biryanis and traditional delicacies.
