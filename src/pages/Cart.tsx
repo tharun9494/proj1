@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Trash2, Plus, Minus, ArrowRight, Loader, MapPin, CreditCard, Truck } from 'lucide-react';
@@ -8,9 +8,9 @@ import { createOrder } from '../services/orderService';
 import { getUserData } from '../services/userService';
 import toast from 'react-hot-toast';
 import { RAZORPAY_CONFIG } from '../config/razorpay';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, increment } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 const DELIVERY_FEE = {
   ONLINE: 0,
@@ -40,6 +40,29 @@ const Cart = () => {
     alternativePhone: ''
   });
   const [useProfileAddress, setUseProfileAddress] = useState(true);
+  const [restaurantStatus, setRestaurantStatus] = useState<RestaurantStatus | null>(null);
+
+  useEffect(() => {
+    const statusRef = doc(db, 'restaurant', 'status');
+    
+    // Listen for status changes
+    const unsubscribe = onSnapshot(statusRef, 
+      (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          setRestaurantStatus({
+            isOpen: data.isOpen,
+            lastUpdated: data.lastUpdated
+          });
+        }
+      },
+      (error) => {
+        console.error('Error listening to restaurant status:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   React.useEffect(() => {
     const loadUserAddress = async () => {
@@ -173,6 +196,11 @@ const Cart = () => {
       return;
     }
 
+    if (!restaurantStatus?.isOpen) {
+      toast.error('Restaurant is currently closed. Please try again during business hours (11:00 AM - 10:00 PM)');
+      return;
+    }
+
     if (!address.street || !address.city || !address.pincode) {
       toast.error('Please provide a complete delivery address');
       return;
@@ -233,6 +261,64 @@ const Cart = () => {
       min: minDeliveryTime,
       max: maxDeliveryTime
     };
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!user) {
+      toast.error('Please login to place an order');
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      const orderRef = collection(db, 'orders');
+      const batch = writeBatch(db);
+
+      // Create order document
+      const orderData = {
+        userId: user.uid,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          isVeg: item.isVeg
+        })),
+        totalAmount: totalAmount,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        userName: user.displayName || 'Guest',
+        userPhone: user.phoneNumber || '',
+        address: {
+          street: '',
+          city: '',
+          pincode: '',
+        },
+        paymentStatus: 'pending',
+        paymentMethod: 'COD'
+      };
+
+      const orderDocRef = doc(orderRef);
+      batch.set(orderDocRef, orderData);
+
+      // Update orderCount for each item
+      items.forEach(item => {
+        const itemRef = doc(db, 'menuItems', item.id);
+        batch.update(itemRef, {
+          orderCount: increment(1)
+        });
+      });
+
+      await batch.commit();
+      clearCart();
+      toast.success('Order placed successfully!');
+      navigate('/orders');
+    } catch (error) {
+      console.error('Error placing order:', error);
+      toast.error('Failed to place order. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (items.length === 0) {
