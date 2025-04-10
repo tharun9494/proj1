@@ -24,6 +24,7 @@ interface MenuItem {
   description: string;
   category: string;
   image: string;
+  isAvailable?: boolean;
 }
 
 const MenuItem = () => {
@@ -136,8 +137,10 @@ const MenuItem = () => {
   };
 
   const handleAddToCart = () => {
-    if (!item) return;
-
+    if (!item?.isAvailable) {
+      toast.error('This item is currently unavailable');
+      return;
+    }
     addToCart({
       id: item.id,
       name: item.name,
@@ -145,18 +148,26 @@ const MenuItem = () => {
       quantity: quantity,
       image: item.image
     });
+    toast.success('Added to cart');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+      <div className="min-h-screen bg-gray-100 py-8">
+        <div className="flex justify-center items-center h-48">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500"></div>
+        </div>
       </div>
     );
   }
 
   if (!item) {
-    return null;
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-2xl font-bold text-gray-900">Item not found</h2>
+        <p className="text-gray-600 mt-2">The requested item could not be found.</p>
+      </div>
+    );
   }
 
   const averageRating = reviews.length
@@ -164,7 +175,7 @@ const MenuItem = () => {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
+    <div className="min-h-screen bg-gray-100 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <button
           onClick={() => navigate('/menu')}
@@ -174,73 +185,60 @@ const MenuItem = () => {
           Back to Menu
         </button>
 
-        <div className="bg-white rounded-lg shadow-md md:shadow-lg overflow-hidden">
-          <div className="flex flex-col md:flex-row">
-            <div className="md:w-1/2">
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-2">
+            <div className="relative h-64 md:h-full">
               <img
                 src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
                 alt={item.name}
-                className="w-full h-64 md:h-96 object-cover"
+                className="w-full h-full object-cover"
               />
+              {!item.isAvailable && (
+                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+                  <span className="text-white font-bold text-2xl">Unavailable</span>
+                </div>
+              )}
             </div>
-            <div className="md:w-1/2 p-4 md:p-8">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <div className="flex flex-col gap-2 md:gap-0">
-                  <h1 className="text-xl md:text-3xl font-bold text-gray-900">{item.name}</h1>
-                  <span className="self-start px-2 py-0.5 md:px-3 md:py-1 bg-red-50 text-red-700 text-xs md:text-sm font-medium rounded-full">
-                    {item.category}
+            <div className="p-6">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">{item.name}</h1>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xl font-semibold text-red-500">₹{item.price}</span>
+                <span className="px-2 py-1 bg-red-50 text-red-700 text-sm font-medium rounded-full">
+                  {item.category}
+                </span>
+                {!item.isAvailable && (
+                  <span className="px-2 py-1 bg-gray-50 text-gray-700 text-sm font-medium rounded-full">
+                    Unavailable
                   </span>
-                </div>
-                <div className="mt-2 md:mt-4 flex items-center">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                      key={star}
-                      className={`h-4 w-4 md:h-5 md:w-5 ${
-                        star <= averageRating
-                          ? 'text-yellow-400 fill-current'
-                          : 'text-gray-300'
-                      }`}
-                    />
-                  ))}
-                  <span className="ml-2 text-xs md:text-sm text-gray-600">
-                    ({reviews.length} reviews)
-                  </span>
-                </div>
-                <p className="mt-2 md:mt-4 text-sm md:text-base text-gray-600">{item.description}</p>
-                <div className="mt-4 md:mt-6">
-                  <span className="text-2xl md:text-3xl font-bold text-gray-900">₹{item.price}</span>
-                </div>
-                
-                <div className="mt-4 md:mt-6 flex items-center space-x-3 md:space-x-4">
-                  <span className="text-sm md:text-base text-gray-700">Quantity:</span>
+                )}
+              </div>
+              <p className="text-gray-600 mb-6">{item.description}</p>
+              
+              {item.isAvailable && (
+                <div className="flex items-center gap-4">
                   <div className="flex items-center border rounded-lg">
                     <button
-                      onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                      className="p-1.5 md:p-2 hover:bg-gray-100"
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      className="px-3 py-2 text-gray-600 hover:bg-gray-100"
                     >
-                      <Minus size={16} className="md:w-5 md:h-5" />
+                      -
                     </button>
-                    <span className="px-3 md:px-4 py-1 md:py-2 text-base md:text-lg font-medium">{quantity}</span>
+                    <span className="px-3 py-2">{quantity}</span>
                     <button
-                      onClick={() => setQuantity(q => q + 1)}
-                      className="p-1.5 md:p-2 hover:bg-gray-100"
+                      onClick={() => setQuantity(quantity + 1)}
+                      className="px-3 py-2 text-gray-600 hover:bg-gray-100"
                     >
-                      <Plus size={16} className="md:w-5 md:h-5" />
+                      +
                     </button>
                   </div>
+                  <button
+                    onClick={handleAddToCart}
+                    className="flex-1 bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition-colors"
+                  >
+                    Add to Cart
+                  </button>
                 </div>
-
-                <button
-                  onClick={handleAddToCart}
-                  className="mt-4 md:mt-8 w-full flex items-center justify-center px-4 md:px-6 py-2 md:py-3 border border-transparent rounded-md shadow-sm text-sm md:text-base font-medium text-white bg-red-500 hover:bg-red-600"
-                >
-                  <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 mr-2" />
-                  Add to Cart - ₹{item.price * quantity}
-                </button>
-              </motion.div>
+              )}
             </div>
           </div>
         </div>

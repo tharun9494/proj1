@@ -15,7 +15,8 @@ import {
   ChevronDown, 
   ChevronUp, 
   Phone,
-  Clock 
+  Clock,
+  XCircle
 } from 'lucide-react';
 import { 
   collection, 
@@ -29,7 +30,10 @@ import {
   serverTimestamp, 
   onSnapshot, 
   Timestamp, 
-  orderBy 
+  orderBy,
+  writeBatch,
+  getDoc,
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/AuthContext';
@@ -55,6 +59,7 @@ interface MenuItem {
   category: string;
   image: string;
   createdAt?: Date;
+  isAvailable?: boolean;
 }
 
 interface Order {
@@ -87,6 +92,11 @@ interface Message {
   createdAt: any;
 }
 
+interface RestaurantStatus {
+  isOpen: boolean;
+  lastUpdated: any;
+}
+
 const Dashboard = () => {
   const { isAdmin } = useAuth();
   const [totalItems, setTotalItems] = useState(0);
@@ -114,6 +124,13 @@ const Dashboard = () => {
   const [showAllItems, setShowAllItems] = useState(false);
   const ITEMS_PER_PAGE = 5; // Number of items to show initially
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [restaurantStatus, setRestaurantStatus] = useState<{
+    isOpen: boolean;
+    lastUpdated: Timestamp;
+  }>({
+    isOpen: true,
+    lastUpdated: Timestamp.now(),
+  });
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -122,7 +139,7 @@ const Dashboard = () => {
       try {
         setIsLoading(true);
         await fetchDashboardData();
-        // Remove fetchOrderStats since we'll handle stats in setupOrdersListener
+        await fetchRestaurantStatus();
         const unsubscribe = setupOrdersListener();
         return () => {
           if (unsubscribe) unsubscribe();
@@ -137,6 +154,45 @@ const Dashboard = () => {
 
     fetchData();
   }, [isAdmin]);
+
+  useEffect(() => {
+    const statusRef = doc(db, 'restaurant', 'status');
+    
+    // Set initial status if it doesn't exist
+    getDoc(statusRef).then((doc) => {
+      if (!doc.exists()) {
+        setDoc(statusRef, {
+          isOpen: true,
+          lastUpdated: Timestamp.now(),
+        }).catch((error) => {
+          console.error('Error setting initial restaurant status:', error);
+          toast.error('Failed to initialize restaurant status');
+        });
+      }
+    }).catch((error) => {
+      console.error('Error checking restaurant status:', error);
+      toast.error('Failed to load restaurant status');
+    });
+
+    // Listen for status changes
+    const unsubscribe = onSnapshot(statusRef, 
+      (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          setRestaurantStatus({
+            isOpen: data.isOpen,
+            lastUpdated: data.lastUpdated
+          });
+        }
+      },
+      (error) => {
+        console.error('Error listening to restaurant status:', error);
+        toast.error('Failed to load restaurant status');
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const handlePopulateMenu = async () => {
     if (!isAdmin) {
@@ -373,6 +429,7 @@ const Dashboard = () => {
     try {
       await addDoc(collection(db, 'menuItems'), {
         ...newItem,
+        isAvailable: true,
         createdAt: serverTimestamp()
       });
       setIsAddingItem(false);
@@ -381,7 +438,8 @@ const Dashboard = () => {
         price: 0,
         description: '',
         category: '',
-        image: ''
+        image: '',
+        isAvailable: true
       });
       toast.success('Item added successfully');
       fetchDashboardData();
@@ -484,6 +542,84 @@ const Dashboard = () => {
         hour12: true
       })
     };
+  };
+
+  const handleToggleAvailability = async (item: MenuItem) => {
+    try {
+      const itemRef = doc(db, 'menuItems', item.id);
+      await updateDoc(itemRef, {
+        isAvailable: !item.isAvailable,
+        updatedAt: serverTimestamp()
+      });
+      toast.success(`Item ${!item.isAvailable ? 'made available' : 'marked as unavailable'}`);
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error toggling availability:', error);
+      toast.error('Failed to update item availability');
+    }
+  };
+
+  const handleResetAllAvailability = async () => {
+    try {
+      setIsLoading(true);
+      const batch = writeBatch(db);
+      const menuSnapshot = await getDocs(collection(db, 'menuItems'));
+      
+      menuSnapshot.docs.forEach(doc => {
+        const itemRef = doc.ref;
+        batch.update(itemRef, {
+          isAvailable: true,
+          updatedAt: serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+      toast.success('All items reset to available for next day');
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error resetting availability:', error);
+      toast.error('Failed to reset item availability');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchRestaurantStatus = async () => {
+    try {
+      const statusDoc = await getDoc(doc(db, 'restaurant', 'status'));
+      if (statusDoc.exists()) {
+        setRestaurantStatus(statusDoc.data() as {
+          isOpen: boolean;
+          lastUpdated: Timestamp;
+        });
+      } else {
+        // Initialize status if it doesn't exist
+        await updateDoc(doc(db, 'restaurant', 'status'), {
+          isOpen: true,
+          lastUpdated: Timestamp.now(),
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching restaurant status:', error);
+      toast.error('Failed to load restaurant status');
+    }
+  };
+
+  const handleToggleRestaurantStatus = async () => {
+    try {
+      const statusRef = doc(db, 'restaurant', 'status');
+      const newStatus = !restaurantStatus.isOpen;
+      
+      await updateDoc(statusRef, {
+        isOpen: newStatus,
+        lastUpdated: Timestamp.now(),
+      });
+      
+      toast.success(`Restaurant is now ${newStatus ? 'open' : 'closed'}`);
+    } catch (error) {
+      console.error('Error toggling restaurant status:', error);
+      toast.error('Failed to update restaurant status. Please try again.');
+    }
   };
 
   const renderOrdersList = (orders: Order[], title: string) => (
@@ -708,10 +844,31 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gray-100 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-gray-600">Manage your restaurant's menu and orders</p>
-            
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+              <p className="text-gray-600">Manage your restaurant's menu and orders</p>
+            </div>
+            <button
+              onClick={handleToggleRestaurantStatus}
+              className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                restaurantStatus.isOpen
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-red-500 text-white hover:bg-red-600'
+              }`}
+            >
+              {restaurantStatus.isOpen ? (
+                <>
+                  <CheckCircle className="h-5 w-5" />
+                  Restaurant is Open
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-5 w-5" />
+                  Restaurant is Closed
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -919,12 +1076,21 @@ const Dashboard = () => {
           <div className="flex flex-col gap-2 mb-3">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold">Menu Items ({filteredMenuItems.length})</h2>
-              <button
-                onClick={() => setIsAddingItem(true)}
-                className="p-1.5 bg-red-500 text-white rounded-md hover:bg-red-600"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleResetAllAvailability}
+                  disabled={isLoading}
+                  className="p-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
+                >
+                  Reset All to Available
+                </button>
+                <button
+                  onClick={() => setIsAddingItem(true)}
+                  className="p-1.5 bg-red-500 text-white rounded-md hover:bg-red-600"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             
             <input
@@ -951,6 +1117,13 @@ const Dashboard = () => {
                     <div>
                       <div className="text-sm font-medium line-clamp-1">{item.name}</div>
                       <div className="text-xs text-gray-500">₹{item.price} • {item.category}</div>
+                      <div className="text-xs">
+                        {item.isAvailable ? (
+                          <span className="text-green-600">Available</span>
+                        ) : (
+                          <span className="text-red-600">Unavailable</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   
@@ -966,6 +1139,20 @@ const Dashboard = () => {
                       className="p-1 text-red-600 hover:bg-red-50 rounded"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleToggleAvailability(item)}
+                      className={`p-1 rounded ${
+                        item.isAvailable 
+                          ? 'text-green-600 hover:bg-green-50' 
+                          : 'text-red-600 hover:bg-red-50'
+                      }`}
+                    >
+                      {item.isAvailable ? (
+                        <CheckCircle className="h-3.5 w-3.5" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5" />
+                      )}
                     </button>
                   </div>
                 </div>

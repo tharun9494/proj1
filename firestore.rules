@@ -42,6 +42,12 @@ service cloud.firestore {
       allow list, update, delete: if isAdmin();  // Admin can manage all orders
     }
 
+    // Restaurant status rules
+    match /restaurant/{document} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Default deny for all other collections
     match /{document=**} {
       allow read, write: if false;

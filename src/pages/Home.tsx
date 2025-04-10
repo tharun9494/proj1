@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ChevronRight, Star, Clock, MapPin, Search, ArrowRight, Award, Users, ThumbsUp } from 'lucide-react';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import toast from 'react-hot-toast';
 
@@ -13,6 +13,8 @@ interface MenuItem {
   description: string;
   category: string;
   image: string;
+  isAvailable?: boolean;
+  orderCount?: number;
 }
 
 const Home = () => {
@@ -27,12 +29,14 @@ const Home = () => {
   const fetchPopularItems = async () => {
     try {
       const menuRef = collection(db, 'menuItems');
-      const q = query(menuRef, orderBy('createdAt'), limit(6));
+      const q = query(menuRef, orderBy('orderCount', 'desc'), limit(6));
       const snapshot = await getDocs(q);
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as MenuItem[];
+      const items = snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(item => item.isAvailable !== false) as MenuItem[];
       setPopularItems(items);
     } catch (error) {
       console.error('Error fetching popular items:', error);
