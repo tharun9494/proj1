@@ -11,7 +11,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'ontimittatharun2002@gmail.com';
+      return isAuthenticated() && (
+        request.auth.token.email == 'ontimittatharun2002@gmail.com' ||
+        request.auth.token.admin == true
+      );
     }
 
     // User collection rules
@@ -46,6 +49,11 @@ service cloud.firestore {
     match /restaurant/{document} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Admin dashboard rules
+    match /admin/{document} {
+      allow read, write: if isAdmin();
     }
 
     // Default deny for all other collections
