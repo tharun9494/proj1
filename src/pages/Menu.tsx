@@ -263,7 +263,7 @@ const Menu = () => {
                     {(selectedType === 'all' || selectedType === 'veg') && items.veg.length > 0 && (
                       <div className="space-y-2">
                         <h3 className="text-sm sm:text-base font-semibold text-green-600">Vegetarian</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
+                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
                           {items.veg.map((item) => (
                             <motion.div
                               key={item.id}
@@ -307,7 +307,7 @@ const Menu = () => {
                     {(selectedType === 'all' || selectedType === 'non-veg') && items.nonVeg.length > 0 && (
                       <div className="space-y-2">
                         <h3 className="text-sm sm:text-base font-semibold text-red-600">Non-Vegetarian</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
+                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
                           {items.nonVeg.map((item) => (
                             <motion.div
                               key={item.id}
