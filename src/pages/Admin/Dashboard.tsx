@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   ShoppingBag, 
@@ -131,6 +131,10 @@ const Dashboard = () => {
     isOpen: true,
     lastUpdated: Timestamp.now(),
   });
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryAvailability, setCategoryAvailability] = useState<Record<string, boolean>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previousOrdersCountRef = useRef(0);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -194,6 +198,43 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    // Update categories when menu items change
+    const uniqueCategories = Array.from(new Set(menuItems.map(item => item.category)));
+    setCategories(uniqueCategories);
+    
+    // Initialize category availability
+    const availability: Record<string, boolean> = {};
+    uniqueCategories.forEach(category => {
+      const categoryItems = menuItems.filter(item => item.category === category);
+      availability[category] = categoryItems.every(item => item.isAvailable !== false);
+    });
+    setCategoryAvailability(availability);
+  }, [menuItems]);
+
+  useEffect(() => {
+    // Create audio element
+    audioRef.current = new Audio('/notification.mp3');
+    
+    return () => {
+      if (audioRef.current) {
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (todayOrders.length > previousOrdersCountRef.current) {
+      // Play notification sound
+      const audio = new Audio('/notification.mp3');
+      audio.play().catch(error => {
+        console.error('Error playing notification sound:', error);
+      });
+    }
+    // Update the previous count
+    previousOrdersCountRef.current = todayOrders.length;
+  }, [todayOrders.length]);
+
   const handlePopulateMenu = async () => {
     if (!isAdmin) {
       toast.error('Admin access required');
@@ -247,6 +288,14 @@ const Dashboard = () => {
           const dateB = b.createdAt?.toDate() || new Date();
           return dateB.getTime() - dateA.getTime();
         });
+
+        // Play notification sound if new orders arrived
+        if (todayOrdersList.length > todayOrders.length) {
+          const audio = new Audio('/notification.mp3');
+          audio.play().catch(error => {
+            console.error('Error playing notification sound:', error);
+          });
+        }
 
         // Set today's orders
         setTodayOrders(todayOrdersList);
@@ -619,6 +668,36 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error toggling restaurant status:', error);
       toast.error('Failed to update restaurant status. Please try again.');
+    }
+  };
+
+  const toggleCategoryAvailability = async (category: string) => {
+    try {
+      const newAvailability = !categoryAvailability[category];
+      setCategoryAvailability(prev => ({
+        ...prev,
+        [category]: newAvailability
+      }));
+
+      // Update all items in the category
+      const categoryItems = menuItems.filter(item => item.category === category);
+      const batch = writeBatch(db);
+      
+      categoryItems.forEach(item => {
+        const itemRef = doc(db, 'menuItems', item.id);
+        batch.update(itemRef, { isAvailable: newAvailability });
+      });
+
+      await batch.commit();
+      toast.success(`All ${category} items are now ${newAvailability ? 'available' : 'unavailable'}`);
+    } catch (error) {
+      console.error('Error updating category availability:', error);
+      toast.error('Failed to update category availability');
+      // Revert the UI state on error
+      setCategoryAvailability(prev => ({
+        ...prev,
+        [category]: !prev[category]
+      }));
     }
   };
 
@@ -1263,6 +1342,30 @@ const Dashboard = () => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Category Availability Controls */}
+        <div className="mb-8 bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Category Availability</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {categories.map(category => (
+              <div key={category} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <span className="font-medium text-gray-700">{category}</span>
+                <button
+                  onClick={() => toggleCategoryAvailability(category)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
+                    categoryAvailability[category] ? 'bg-green-500' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      categoryAvailability[category] ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Messages Section - Better mobile layout */}
