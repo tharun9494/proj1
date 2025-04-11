@@ -213,25 +213,35 @@ const Dashboard = () => {
   }, [menuItems]);
 
   useEffect(() => {
-    // Create audio element
+    // Initialize audio immediately when component mounts
     audioRef.current = new Audio('/notification.mp3');
-    
+    audioRef.current.load(); // Preload the audio file
     return () => {
       if (audioRef.current) {
+        audioRef.current.pause();
         audioRef.current = null;
       }
     };
   }, []);
 
   useEffect(() => {
+    // Update orders listener to play sound immediately
     if (todayOrders.length > previousOrdersCountRef.current) {
-      // Play notification sound
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(error => {
-        console.error('Error playing notification sound:', error);
+      // Play sound immediately
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0; // Reset to start
+        audioRef.current.play().catch(error => {
+          console.error('Error playing notification sound:', error);
+        });
+      }
+      
+      // Show toast notification
+      toast.success('New order received!', {
+        duration: 2000,
+        position: 'top-center',
+        icon: '🔔'
       });
     }
-    // Update the previous count
     previousOrdersCountRef.current = todayOrders.length;
   }, [todayOrders.length]);
 

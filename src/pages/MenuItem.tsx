@@ -141,6 +141,14 @@
         toast.error('This item is currently unavailable');
         return;
       }
+      
+      // Show success notification immediately
+      toast.success('Added to cart', {
+        duration: 1000, // Show for 1 second
+        position: 'top-center'
+      });
+      
+      // Add item to cart
       addToCart({
         id: item.id,
         name: item.name,
@@ -148,7 +156,11 @@
         quantity: quantity,
         image: item.image
       });
-      toast.success('Added to cart');
+      
+      // Navigate after a short delay to ensure the notification is visible
+      setTimeout(() => {
+        navigate('/orders');
+      }, 500);
     };
 
     if (loading) {
