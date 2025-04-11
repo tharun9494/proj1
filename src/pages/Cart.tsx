@@ -240,7 +240,7 @@ const Cart = () => {
         // For COD, directly process the order without payment
         await clearCart();
         toast.success('Order placed successfully!');
-        navigate(`/orders/${orderRef.id}`);
+        navigate('/'); // Redirect to home page
       } else {
         // For online payment, proceed with Razorpay
         await handlePayment(finalAmount, orderRef.id);
