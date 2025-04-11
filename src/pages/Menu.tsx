@@ -134,8 +134,8 @@ const Menu = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 md:py-12">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-100 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Restaurant Status Banner */}
         {!restaurantStatus.isOpen && (
           <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4">
@@ -265,14 +265,21 @@ const Menu = () => {
                         <h3 className="text-sm sm:text-base font-semibold text-green-600">Vegetarian</h3>
                         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
                           {items.veg.map((item) => (
-                            <motion.div
+                            <div
                               key={item.id}
-                              initial={{ opacity: 0, y: 20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className={`bg-white rounded-lg md:rounded-xl shadow-sm md:shadow-md overflow-hidden hover:shadow-md md:hover:shadow-lg transition-shadow ${
+                              className={`bg-white rounded-lg shadow-md overflow-hidden relative ${
                                 !item.isAvailable ? 'opacity-60' : ''
                               }`}
                             >
+                              {/* Unavailable Overlay */}
+                              {!item.isAvailable && (
+                                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center z-10">
+                                  <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-medium">
+                                    Currently Unavailable
+                                  </span>
+                                </div>
+                              )}
+
                               <Link to={`/menu/${item.id}`} className="block">
                                 <div className="relative h-32 sm:h-40 md:h-48">
                                   <img
@@ -297,7 +304,7 @@ const Menu = () => {
                                   <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{item.description}</p>
                                 </div>
                               </Link>
-                            </motion.div>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -309,14 +316,21 @@ const Menu = () => {
                         <h3 className="text-sm sm:text-base font-semibold text-red-600">Non-Vegetarian</h3>
                         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
                           {items.nonVeg.map((item) => (
-                            <motion.div
+                            <div
                               key={item.id}
-                              initial={{ opacity: 0, y: 20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className={`bg-white rounded-lg md:rounded-xl shadow-sm md:shadow-md overflow-hidden hover:shadow-md md:hover:shadow-lg transition-shadow ${
+                              className={`bg-white rounded-lg shadow-md overflow-hidden relative ${
                                 !item.isAvailable ? 'opacity-60' : ''
                               }`}
                             >
+                              {/* Unavailable Overlay */}
+                              {!item.isAvailable && (
+                                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center z-10">
+                                  <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-medium">
+                                    Currently Unavailable
+                                  </span>
+                                </div>
+                              )}
+
                               <Link to={`/menu/${item.id}`} className="block">
                                 <div className="relative h-32 sm:h-40 md:h-48">
                                   <img
@@ -341,7 +355,7 @@ const Menu = () => {
                                   <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{item.description}</p>
                                 </div>
                               </Link>
-                            </motion.div>
+                            </div>
                           ))}
                         </div>
                       </div>
