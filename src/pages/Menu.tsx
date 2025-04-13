@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { Search, Filter, Star, XCircle } from 'lucide-react';
+import { Search, Filter, Star, XCircle, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface MenuItem {
@@ -17,15 +17,25 @@ interface MenuItem {
   createdAt?: any;
   isVeg: boolean;
 }
-
+  
 interface RestaurantStatus {
   isOpen: boolean;
   lastUpdated: any;
 }
 
+interface OfferItem extends MenuItem {
+  offerType: 'discount' | 'buy_one_get_one';
+  discountPercentage?: number;
+  originalPrice: number;
+  offerPrice: number;
+  validUntil: Date;
+}
+
 const Menu = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [offerItems, setOfferItems] = useState<OfferItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [offersLoading, setOffersLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'veg' | 'non-veg'>('all');
@@ -35,6 +45,7 @@ const Menu = () => {
   useEffect(() => {
     fetchRestaurantStatus();
     fetchMenuItems();
+    fetchOffers();
   }, []);
 
   const fetchRestaurantStatus = async () => {
@@ -57,7 +68,7 @@ const Menu = () => {
         const item = { id: doc.id, ...doc.data() } as MenuItem;
         const lowerCaseName = item.name.toLowerCase();
         
-        if (!uniqueItems.has(lowerCaseName) || 
+        if (!uniqueItems.has(lowerCaseName) ||  
             (item.createdAt && uniqueItems.get(lowerCaseName).createdAt && 
              item.createdAt > uniqueItems.get(lowerCaseName).createdAt)) {
           uniqueItems.set(lowerCaseName, item);
@@ -82,6 +93,73 @@ const Menu = () => {
       toast.error('Failed to load menu items');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOffers = async () => {
+    try {
+      setOffersLoading(true);
+      const now = new Date();
+      
+      const offersQuery = query(
+        collection(db, 'offers'),
+        where('isActive', '==', true)
+      );
+
+      const offersSnapshot = await getDocs(offersQuery);
+      const offersList = offersSnapshot.docs.map(doc => {
+        const data = doc.data();
+        const validUntil = data.validUntil ? data.validUntil.toDate() : new Date();
+        
+        if (validUntil > now) {
+          return {
+            id: doc.id,
+            title: data.title || 'Special Offer',
+            description: data.description || '',
+            type: data.type || 'discount',
+            discountPercentage: data.discountPercentage || 0,
+            offerPrice: data.offerPrice || 0,
+            isActive: data.isActive || false,
+            image: data.image || '',
+            validUntil: validUntil
+          };
+        }
+        return null;
+      }).filter(offer => offer !== null);
+
+      // Fetch menu items for each offer
+      const offerItemsList: OfferItem[] = [];
+      for (const offer of offersList) {
+        const menuItemsQuery = query(
+          collection(db, 'menuItems'),
+          where('isAvailable', '==', true)
+        );
+        const menuSnapshot = await getDocs(menuItemsQuery);
+        
+        menuSnapshot.docs.forEach(doc => {
+          const menuItem = { id: doc.id, ...doc.data() } as MenuItem;
+          const offerPrice = offer.type === 'discount' 
+            ? menuItem.price * (1 - offer.discountPercentage / 100)
+            : menuItem.price;
+            
+          offerItemsList.push({
+            ...menuItem,
+            offerType: offer.type,
+            discountPercentage: offer.discountPercentage,
+            originalPrice: menuItem.price,
+            offerPrice: Math.round(offerPrice),
+            validUntil: offer.validUntil
+          });
+        });
+      }
+      
+      setOfferItems(offerItemsList);
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+      toast.error('Failed to load offers. Please try again later.');
+      setOfferItems([]);
+    } finally {
+      setOffersLoading(false);
     }
   };
 
@@ -144,6 +222,67 @@ const Menu = () => {
               <p className="text-red-600">
                 Restaurant is currently closed. Timing: 11:00 AM - 10:00 PM
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Special Offers Section */}
+        {restaurantStatus.isOpen && !offersLoading && offerItems.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-4 flex items-center">
+              <Tag className="h-6 w-6 text-red-500 mr-2" />
+              Special Offers
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
+              {offerItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-lg shadow-md overflow-hidden relative"
+                >
+                  <Link to={`/menu/${item.id}`} className="block">
+                    <div className="relative h-32 sm:h-40 md:h-48">
+                      <img
+                        src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                      {/* Offer Badge */}
+                      <div className="absolute top-1 right-1 sm:top-2 sm:right-2 md:top-4 md:right-4 flex flex-col items-end gap-1">
+                        <div className="bg-red-500 text-white px-2 py-1 rounded-full text-xs md:text-sm font-semibold">
+                          {item.offerType === 'discount' 
+                            ? `${item.discountPercentage}% OFF` 
+                            : 'Buy 1 Get 1'
+                          }
+                        </div>
+                        <div className="bg-white px-2 py-1 rounded-full text-xs md:text-sm font-semibold flex items-center gap-1">
+                          <span className="text-gray-500 line-through">₹{item.originalPrice}</span>
+                          <span className="text-red-500">₹{item.offerPrice}</span>
+                        </div>
+                      </div>
+                      {/* Veg/Non-Veg Badge */}
+                      <div className="absolute top-1 left-1 sm:top-2 sm:left-2 md:top-4 md:left-4">
+                        <span className={`${
+                          item.isVeg ? 'bg-green-500' : 'bg-red-500'
+                        } text-white px-1.5 py-0.5 rounded-full text-xs`}>
+                          {item.isVeg ? 'Veg' : 'Non-Veg'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-2 sm:p-3">
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-0.5 sm:mb-1">
+                        {item.name}
+                      </h3>
+                      <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">
+                        {item.description}
+                      </p>
+                      {/* Offer Validity */}
+                      <p className="text-xs text-red-500 mt-1">
+                        Valid until: {item.validUntil.toLocaleDateString()}
+                      </p>
+                    </div>
+                  </Link>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -245,7 +384,7 @@ const Menu = () => {
                 </button>
               </div>
             </div>
-
+            
             {/* Menu Items by Category */}
             {loading ? (
               <div className="flex justify-center items-center h-32 sm:h-48">

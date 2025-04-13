@@ -17,12 +17,19 @@ const DELIVERY_FEE = {
   COD: 40
 };
 
+const GST_PERCENTAGE = 2; // 2% GST
+
 // Update delivery fee logic
 const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD') => {
   if (subtotal >= 500) {
     return 0; // Free delivery for orders above ₹500
   }
   return 40; // ₹40 delivery fee for orders below ₹500
+};
+
+// Calculate GST amount
+const calculateGST = (amount: number) => {
+  return Math.round((amount * GST_PERCENTAGE) / 100);
 };
 
 const Cart = () => {
@@ -185,9 +192,11 @@ const Cart = () => {
     }
   };
 
-  // Calculate delivery fee based on total and payment method
-  const deliveryFee = calculateDeliveryFee(totalAmount, paymentMethod);
-  const finalAmount = totalAmount + deliveryFee;
+  // Calculate all amounts including GST
+  const subtotal = totalAmount;
+  const gstAmount = calculateGST(subtotal);
+  const deliveryFee = calculateDeliveryFee(subtotal, paymentMethod);
+  const finalAmount = subtotal + gstAmount + deliveryFee;
 
   // Modify handleCheckout function
   const handleCheckout = async () => {
@@ -221,7 +230,9 @@ const Cart = () => {
       const orderRef = await addDoc(collection(db, 'orders'), {
         userId: user.id,
         items: items,
-        totalAmount: totalAmount,
+        subtotal: subtotal,
+        gstAmount: gstAmount,
+        gstPercentage: GST_PERCENTAGE,
         deliveryFee: deliveryFee,
         finalAmount: finalAmount,
         address: address,
@@ -550,7 +561,13 @@ const Cart = () => {
                 <dl className="-my-2 md:-my-4 text-sm divide-y divide-gray-200">
                   <div className="py-2 md:py-4 flex items-center justify-between">
                     <dt className="text-xs md:text-sm text-gray-600">Subtotal ({totalItems} items)</dt>
-                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{totalAmount}</dd>
+                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{subtotal}</dd>
+                  </div>
+                  
+                  {/* GST Section */}
+                  <div className="py-2 md:py-4 flex items-center justify-between">
+                    <dt className="text-xs md:text-sm text-gray-600">GST ({GST_PERCENTAGE}%)</dt>
+                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{gstAmount}</dd>
                   </div>
                   
                   {/* Delivery Fee Section with Info */}
@@ -565,9 +582,9 @@ const Cart = () => {
                         )}
                       </dd>
                     </div>
-                    {totalAmount < 500 && (
+                    {subtotal < 500 && (
                       <p className="text-xs text-gray-500 mt-1">
-                        Add items worth ₹{500 - totalAmount} more for free delivery
+                        Add items worth ₹{500 - subtotal} more for free delivery
                       </p>
                     )}
                   </div>
@@ -635,17 +652,17 @@ const Cart = () => {
               </button>
 
               {/* Free Delivery Progress Bar */}
-              {totalAmount < 500 && (
+              {subtotal < 500 && (
                 <div className="mt-4">
                   <div className="w-full bg-gray-200 rounded-full h-2.5">
                     <div 
                       className="bg-green-500 h-2.5 rounded-full transition-all duration-500"
-                      style={{ width: `${(totalAmount / 500) * 100}%` }}
+                      style={{ width: `${(subtotal / 500) * 100}%` }}
                     ></div>
                   </div>
                   <p className="text-xs text-center mt-2 text-gray-600">
-                    {totalAmount < 500 ? (
-                      `Add ₹${500 - totalAmount} more for free delivery`
+                    {subtotal < 500 ? (
+                      `Add ₹${500 - subtotal} more for free delivery`
                     ) : (
                       'Yay! You get free delivery'
                     )}
