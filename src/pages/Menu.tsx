@@ -38,7 +38,6 @@ const Menu = () => {
   const [offersLoading, setOffersLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedType, setSelectedType] = useState<'all' | 'veg' | 'non-veg'>('all');
   const [categories, setCategories] = useState<string[]>([]);
   const [restaurantStatus, setRestaurantStatus] = useState<RestaurantStatus>({ isOpen: false, lastUpdated: null });
 
@@ -167,33 +166,17 @@ const Menu = () => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !selectedCategory || item.category === selectedCategory;
-    const matchesType = selectedType === 'all' || 
-                       (selectedType === 'veg' && item.isVeg) || 
-                       (selectedType === 'non-veg' && !item.isVeg);
-    return matchesSearch && matchesCategory && matchesType;
+    return matchesSearch && matchesCategory;
   });
 
-  // Group items by category and type
+  // Group items by category
   const groupedItems = categories.reduce((acc, category) => {
     const categoryItems = filteredItems.filter(item => item.category === category);
     if (categoryItems.length > 0) {
-      // Split items into veg and non-veg
-      const vegItems = categoryItems.filter(item => item.isVeg);
-      const nonVegItems = categoryItems.filter(item => !item.isVeg);
-
-      // Only add category if it has items matching the current filter
-      if ((selectedType === 'all' && categoryItems.length > 0) ||
-          (selectedType === 'veg' && vegItems.length > 0) ||
-          (selectedType === 'non-veg' && nonVegItems.length > 0)) {
-        acc[category] = {
-          all: categoryItems,
-          veg: vegItems,
-          nonVeg: nonVegItems
-        };
-      }
+      acc[category] = categoryItems;
     }
     return acc;
-  }, {} as Record<string, { all: MenuItem[], veg: MenuItem[], nonVeg: MenuItem[] }>);
+  }, {} as Record<string, MenuItem[]>);
 
   if (loading) {
     return (
@@ -349,40 +332,6 @@ const Menu = () => {
                   </button>
                 ))}
               </div>
-
-              {/* Veg/Non-Veg Filters */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedType('all')}
-                  className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-medium ${
-                    selectedType === 'all'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setSelectedType('veg')}
-                  className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-medium ${
-                    selectedType === 'veg'
-                      ? 'bg-green-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Veg
-                </button>
-                <button
-                  onClick={() => setSelectedType('non-veg')}
-                  className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-medium ${
-                    selectedType === 'non-veg'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Non-Veg
-                </button>
-              </div>
             </div>
             
             {/* Menu Items by Category */}
@@ -397,108 +346,50 @@ const Menu = () => {
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 border-b-2 border-red-500 pb-1 sm:pb-2">
                       {category}
                     </h2>
-                    
-                    {/* Show Veg Items Section if applicable */}
-                    {(selectedType === 'all' || selectedType === 'veg') && items.veg.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="text-sm sm:text-base font-semibold text-green-600">Vegetarian</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
-                          {items.veg.map((item) => (
-                            <div
-                              key={item.id}
-                              className={`bg-white rounded-lg shadow-md overflow-hidden relative ${
-                                !item.isAvailable ? 'opacity-60' : ''
-                              }`}
-                            >
-                              {/* Unavailable Overlay */}
-                              {!item.isAvailable && (
-                                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center z-10">
-                                  <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-medium">
-                                    Currently Unavailable
-                                  </span>
-                                </div>
-                              )}
-
-                              <Link to={`/menu/${item.id}`} className="block">
-                                <div className="relative h-32 sm:h-40 md:h-48">
-                                  <img
-                                    src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
-                                    alt={item.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                  <div className="absolute top-1 right-1 sm:top-2 sm:right-2 md:top-4 md:right-4 bg-white px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-xs md:text-sm font-semibold text-gray-900">
-                                    ₹{item.price}
-                                  </div>
-                                  {!item.isAvailable && (
-                                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
-                                      <span className="text-white font-bold text-base sm:text-lg">Unavailable</span>
-                                    </div>
-                                  )}
-                                  <div className="absolute top-1 left-1 sm:top-2 sm:left-2 md:top-4 md:left-4">
-                                    <span className="bg-green-500 text-white px-1.5 py-0.5 rounded-full text-xs">Veg</span>
-                                  </div>
-                                </div>
-                                <div className="p-2 sm:p-3">
-                                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-0.5 sm:mb-1">{item.name}</h3>
-                                  <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{item.description}</p>
-                                </div>
-                              </Link>
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
+                      {items.map((item) => (
+                        <div
+                          key={item.id}
+                          className={`bg-white rounded-lg shadow-md overflow-hidden relative ${
+                            !item.isAvailable ? 'opacity-60' : ''
+                          }`}
+                        >
+                          {/* Unavailable Overlay */}
+                          {!item.isAvailable && (
+                            <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center z-10">
+                              <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-medium">
+                                Currently Unavailable
+                              </span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                          )}
 
-                    {/* Show Non-Veg Items Section if applicable */}
-                    {(selectedType === 'all' || selectedType === 'non-veg') && items.nonVeg.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="text-sm sm:text-base font-semibold text-red-600">Non-Vegetarian</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-8">
-                          {items.nonVeg.map((item) => (
-                            <div
-                              key={item.id}
-                              className={`bg-white rounded-lg shadow-md overflow-hidden relative ${
-                                !item.isAvailable ? 'opacity-60' : ''
-                              }`}
-                            >
-                              {/* Unavailable Overlay */}
-                              {!item.isAvailable && (
-                                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center z-10">
-                                  <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-medium">
-                                    Currently Unavailable
-                                  </span>
-                                </div>
-                              )}
-
-                              <Link to={`/menu/${item.id}`} className="block">
-                                <div className="relative h-32 sm:h-40 md:h-48">
-                                  <img
-                                    src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
-                                    alt={item.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                  <div className="absolute top-1 right-1 sm:top-2 sm:right-2 md:top-4 md:right-4 bg-white px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-xs md:text-sm font-semibold text-gray-900">
-                                    ₹{item.price}
-                                  </div>
-                                  {!item.isAvailable && (
-                                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
-                                      <span className="text-white font-bold text-base sm:text-lg">Unavailable</span>
-                                    </div>
-                                  )}
-                                  <div className="absolute top-1 left-1 sm:top-2 sm:left-2 md:top-4 md:left-4">
-                                    <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-xs">Non-Veg</span>
-                                  </div>
-                                </div>
-                                <div className="p-2 sm:p-3">
-                                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-0.5 sm:mb-1">{item.name}</h3>
-                                  <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{item.description}</p>
-                                </div>
-                              </Link>
+                          <Link to={`/menu/${item.id}`} className="block">
+                            <div className="relative h-32 sm:h-40 md:h-48">
+                              <img
+                                src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute top-1 right-1 sm:top-2 sm:right-2 md:top-4 md:right-4 bg-white px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-xs md:text-sm font-semibold text-gray-900">
+                                ₹{item.price}
+                              </div>
+                              {/* Veg/Non-Veg Badge */}
+                              <div className="absolute top-1 left-1 sm:top-2 sm:left-2 md:top-4 md:left-4">
+                                <span className={`${
+                                  item.isVeg ? 'bg-green-500' : 'bg-red-500'
+                                } text-white px-1.5 py-0.5 rounded-full text-xs`}>
+                                  {item.isVeg ? 'Veg' : 'Non-Veg'}
+                                </span>
+                              </div>
                             </div>
-                          ))}
+                            <div className="p-2 sm:p-3">
+                              <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-0.5 sm:mb-1">{item.name}</h3>
+                              <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{item.description}</p>
+                            </div>
+                          </Link>
                         </div>
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
