@@ -33,7 +33,8 @@ import {
   orderBy,
   writeBatch,
   getDoc,
-  setDoc
+  setDoc,
+  limit
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/AuthContext';
@@ -167,6 +168,10 @@ const Dashboard = () => {
     menuItemName: '',
     originalPrice: 0
   });
+  const [newOrderNotification, setNewOrderNotification] = useState<{
+    show: boolean;
+    order: any;
+  }>({ show: false, order: null });
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -331,39 +336,23 @@ const Dashboard = () => {
           return dateB.getTime() - dateA.getTime();
         });
 
-        // Play notification sound if new orders arrived
-        if (todayOrdersList.length > todayOrders.length) {
-          const audio = new Audio('/notification.mp3');
-          audio.play().catch(error => {
-            console.error('Error playing notification sound:', error);
-          });
-        }
-
         // Set today's orders
         setTodayOrders(todayOrdersList);
 
         // Calculate revenue with updated logic
         const calculateRevenue = (orders: Order[]) => {
           return orders.reduce((total, order) => {
-            // Only include successful online payments and COD orders
-            if (
-              (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-              order.paymentMethod === 'COD'
-            ) {
-              const orderTotal = Number(order.totalAmount) || 0;
-              const deliveryFee = Number(order.deliveryFee) || 0;
-              const finalTotal = orderTotal + deliveryFee;
+            // Calculate total item cost
+            const itemCost = order.items.reduce((sum, item) => {
+              const quantity = (item as any).quantity || 1;
+              return sum + (item.price * quantity);
+            }, 0);
 
-              console.log('Adding to revenue:', {
-                orderId: order.id,
-                paymentMethod: order.paymentMethod,
-                paymentStatus: order.paymentStatus,
-                amount: finalTotal
-              });
+            // Add delivery charge if order is under ₹500
+            const deliveryCharge = itemCost < 500 ? 40 : 0;
 
-              return total + finalTotal;
-            }
-            return total;
+            // Return total including items cost and delivery charge
+            return total + itemCost + deliveryCharge;
           }, 0);
         };
 
@@ -1073,6 +1062,40 @@ const Dashboard = () => {
       console.error('Error toggling offer status:', error);
       toast.error('Failed to update offer status');
     }
+  };
+
+  // Add new order listener
+  useEffect(() => {
+    const ordersRef = collection(db, 'orders');
+    const q = query(
+      ordersRef,
+      where('status', '==', 'pending'),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const newOrder = change.doc.data();
+          setNewOrderNotification({
+            show: true,
+            order: newOrder
+          });
+
+          // Play notification sound
+          const audio = new Audio('/notification.mp3');
+          audio.play().catch(err => console.error('Error playing sound:', err));
+        }
+      });
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Function to handle call button click
+  const handleCall = (phoneNumber: string) => {
+    window.location.href = `tel:${phoneNumber}`;
   };
 
   if (!isAdmin) {
@@ -1861,6 +1884,42 @@ const Dashboard = () => {
             </div>
           )}
         </div>
+
+        {/* New Order Notification */}
+        {newOrderNotification.show && newOrderNotification.order && (
+          <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg border border-red-200 animate-bounce">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-red-600">New Order Received!</h3>
+                <p className="text-sm text-gray-600">
+                  Order ID: {newOrderNotification.order.id}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Amount: ₹{newOrderNotification.order.totalAmount}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Payment: {newOrderNotification.order.paymentMethod}
+                </p>
+              </div>
+              <div className="flex flex-col items-center ml-4">
+                <button
+                  onClick={() => handleCall(newOrderNotification.order.userPhone)}
+                  className="bg-green-500 text-white p-2 rounded-full hover:bg-green-600"
+                  title="Call Customer"
+                >
+                  <Phone size={20} />
+                </button>
+                <span className="text-xs text-gray-500 mt-1">Call</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setNewOrderNotification({ show: false, order: null })}
+              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
