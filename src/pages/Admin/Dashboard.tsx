@@ -156,7 +156,7 @@ const Dashboard = () => {
     image: ''
   });
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showMessages, setShowMessages] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -197,26 +197,27 @@ const Dashboard = () => {
   const [isSoundEnabled, setIsSoundEnabled] = useState(false);
 
   useEffect(() => {
-    if (!isAdmin) return;
-
-    const fetchData = async () => {
+    const initializeDashboard = async () => {
       try {
         setIsLoading(true);
+        if (!isAdmin) return;
+
         await fetchDashboardData();
         await fetchRestaurantStatus();
         const unsubscribe = setupOrdersListener();
+        
         return () => {
           if (unsubscribe) unsubscribe();
         };
       } catch (error) {
-        console.error('Error loading dashboard:', error);
+        console.error('Error initializing dashboard:', error);
         toast.error('Failed to load dashboard data');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    initializeDashboard();
   }, [isAdmin]);
 
   useEffect(() => {
@@ -656,20 +657,25 @@ const Dashboard = () => {
   };
 
   const formatDateTime = (timestamp: any) => {
-    if (!timestamp) return 'N/A';
-    const date = timestamp.toDate();
-    return {
-      date: date.toLocaleDateString('en-US', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      }),
-      time: date.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      })
-    };
+    if (!timestamp || !timestamp.toDate) return { date: 'N/A', time: 'N/A' };
+    try {
+      const date = timestamp.toDate();
+      return {
+        date: date.toLocaleDateString('en-US', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        }),
+        time: date.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        })
+      };
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return { date: 'N/A', time: 'N/A' };
+    }
   };
 
   const handleToggleAvailability = async (item: MenuItem) => {
@@ -1159,11 +1165,22 @@ const Dashboard = () => {
     window.location.href = `tel:${phoneNumber}`;
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Access Denied</h1>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white p-6 rounded-lg shadow-md max-w-sm w-full">
+          <h1 className="text-xl font-bold text-red-500 mb-2">Access Denied</h1>
           <p className="text-gray-600">You do not have permission to access this page.</p>
         </div>
       </div>
