@@ -11,12 +11,18 @@ import { RAZORPAY_CONFIG } from '../config/razorpay';
 import { collection, addDoc, serverTimestamp, writeBatch, increment } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { makeOrderNotificationCall } from '../services/phoneService';
+
+interface RestaurantStatus {
+  isOpen: boolean;
+  lastUpdated: Date;
+}
 
 const DELIVERY_FEE = {
   ONLINE: 0,
   COD: 40
 };
-
+  
 const GST_PERCENTAGE = {
   CGST: 2.50,
   SGST: 2.50
@@ -148,7 +154,7 @@ const Cart = () => {
         name: RAZORPAY_CONFIG.name,
         description: `Order #${orderId}`,
         prefill: {
-          name: user?.displayName || '',
+          name: user?.name || '',
           email: user?.email || '',
           contact: user?.phone || ''
         },
@@ -298,25 +304,25 @@ const Cart = () => {
     }
 
     try {
+      console.log('Starting order placement process...');
       setIsProcessing(true);
       const orderRef = collection(db, 'orders');
       const batch = writeBatch(db);
 
       // Create order document
       const orderData = {
-        userId: user.uid,
+        userId: user.id,
         items: items.map(item => ({
           id: item.id,
           name: item.name,
           price: item.price,
-          quantity: item.quantity,
-          isVeg: item.isVeg
+          quantity: item.quantity
         })),
         totalAmount: totalAmount,
         status: 'pending',
         createdAt: serverTimestamp(),
-        userName: user.displayName || 'Guest',
-        userPhone: user.phoneNumber || '',
+        userName: user.name || 'Guest',
+        userPhone: user.phone || '',
         address: {
           street: '',
           city: '',
@@ -325,6 +331,8 @@ const Cart = () => {
         paymentStatus: 'pending',
         paymentMethod: 'COD'
       };
+
+      console.log('Creating order with data:', orderData);
 
       const orderDocRef = doc(orderRef);
       batch.set(orderDocRef, orderData);
@@ -337,7 +345,25 @@ const Cart = () => {
         });
       });
 
+      console.log('Committing batch write...');
       await batch.commit();
+      console.log('Order created successfully with ID:', orderDocRef.id);
+      
+      // Trigger call notification
+      try {
+        console.log('Attempting to trigger phone call notification...');
+        const notificationData = {
+          ...orderData,
+          id: orderDocRef.id
+        };
+        console.log('Notification data:', notificationData);
+        await makeOrderNotificationCall(notificationData);
+        console.log('Phone call notification triggered successfully');
+      } catch (error) {
+        console.error('Error in phone call notification:', error);
+        // Don't fail the order if call notification fails
+      }
+
       clearCart();
       toast.success('Order placed successfully!');
       navigate('/orders');
