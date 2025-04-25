@@ -22,7 +22,7 @@ const DELIVERY_FEE = {
   ONLINE: 0,
   COD: 40
 };
-  
+
 const GST_PERCENTAGE = {
   CGST: 2.50,
   SGST: 2.50

@@ -58,10 +58,10 @@ export const makeOrderCall = onDocumentCreated('orders/{orderId}', async (event)
       try {
         // Make the call
         const call = await twilioClient.calls.create({
-          to: adminPhoneNumber,
-          from: twilioPhoneNumber,
-          twiml: `
-            <Response>
+      to: adminPhoneNumber,
+      from: twilioPhoneNumber,
+      twiml: `
+        <Response>
               <Say>Urgent! New order received! Order ID: ${orderId}. 
               Amount: ${formattedAmount}.
               Payment method: ${orderData.paymentMethod}.
@@ -72,12 +72,12 @@ export const makeOrderCall = onDocumentCreated('orders/{orderId}', async (event)
               <Gather numDigits="1" timeout="10"/>
               <Say>No input received. The message will be repeated.</Say>
               <Redirect/>
-            </Response>
+        </Response>
           `,
           statusCallback: `${process.env.FUNCTION_URL}/callStatus?requestId=${callRequestRef.id}&attempt=${attemptNumber}`,
           statusCallbackEvent: ['completed'],
           machineDetection: 'Enable'
-        });
+    });
 
         // Update call request document
         await callRequestRef.update({
