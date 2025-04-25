@@ -51,24 +51,35 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import toast from 'react-hot-toast';
+import { initializeOrderNotifications } from '../../services/phoneService';
+import { ADMIN_CONFIG } from '../../config/adminConfig';
 
 interface MenuItem {
   id: string;
   name: string;
-  price: number;
   description: string;
+  price: number;
   category: string;
   image: string;
-  createdAt?: Date;
+  quantity: number;
   isAvailable?: boolean;
+  createdAt?: Date;
+}
+
+interface DeliveryTime {
+  date: string;
+  time: string;
 }
 
 interface Order {
   id: string;
-  status: 'pending' | 'completed';
-  totalAmount: number;
   items: MenuItem[];
-  createdAt: any;
+  total: number;
+  totalAmount: number;
+  status: 'pending' | 'completed';
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
   userName: string;
   userPhone: string;
   alternativePhone?: string;
@@ -78,6 +89,8 @@ interface Order {
     pincode: string;
     landmark?: string;
   };
+  deliveryTime: DeliveryTime | "N/A";
+  createdAt: any;
   paymentStatus: 'success' | 'pending' | 'failed';
   paymentMethod: 'ONLINE' | 'COD';
 }
@@ -112,6 +125,15 @@ interface Offer {
   menuItemId: string;
   menuItemName: string;
   originalPrice: number;
+}
+
+interface DeliveryTimeObject {
+  time: string;
+  date: string;
+}
+
+function isDeliveryTimeObject(value: any): value is DeliveryTimeObject {
+  return value !== "N/A" && typeof value === "object" && "time" in value && "date" in value;
 }
 
 const Dashboard = () => {
@@ -281,6 +303,29 @@ const Dashboard = () => {
     }
     previousOrdersCountRef.current = todayOrders.length;
   }, [todayOrders.length]);
+
+  useEffect(() => {
+    // Request notification permission when admin dashboard loads
+    if (Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    // Initialize notifications
+    const unsubscribePromise = initializeOrderNotifications();
+    
+    return () => {
+      // Cleanup function
+      unsubscribePromise.then(unsubscribe => {
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      });
+    };
+  }, [isAdmin]);
 
   const handlePopulateMenu = async () => {
     if (!isAdmin) {
@@ -924,6 +969,19 @@ const Dashboard = () => {
                         Call Customer
                       </button>
                     </div>
+
+                    {isDeliveryTimeObject(order.deliveryTime) ? (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-sm text-gray-500">Delivery Time</p>
+                        <p className="text-sm">{order.deliveryTime.time}</p>
+                      </div>
+                    ) : null}
+                    {isDeliveryTimeObject(order.deliveryTime) ? (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-sm text-gray-500">Delivery Date</p>
+                        <p className="text-sm">{order.deliveryTime.date}</p>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -1902,13 +1960,13 @@ const Dashboard = () => {
                 </p>
               </div>
               <div className="flex flex-col items-center ml-4">
-                <button
-                  onClick={() => handleCall(newOrderNotification.order.userPhone)}
+                <a
+                  href={`tel:${newOrderNotification.order.userPhone}`}
                   className="bg-green-500 text-white p-2 rounded-full hover:bg-green-600"
                   title="Call Customer"
                 >
                   <Phone size={20} />
-                </button>
+                </a>
                 <span className="text-xs text-gray-500 mt-1">Call</span>
               </div>
             </div>
