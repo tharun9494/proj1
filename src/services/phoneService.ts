@@ -8,6 +8,8 @@ class NotificationService {
   private notificationTimeout: NodeJS.Timeout | null = null;
   private retryCount = 0;
   private maxRetries = ADMIN_CONFIG.maxRetries;
+  private maxSoundDuration = 30000; // 30 seconds max sound duration
+  private soundStartTime: number | null = null;
 
   constructor() {
     this.audio = new Audio(ADMIN_CONFIG.notificationSound);
@@ -16,34 +18,44 @@ class NotificationService {
 
   // Initialize notification listeners
   public async initializeNotifications() {
-    // Request notification permission
-    if (Notification.permission !== 'granted') {
-      await Notification.requestPermission();
-    }
+    try {
+      // Request notification permission
+      if (Notification.permission !== 'granted') {
+        await Notification.requestPermission();
+      }
 
-    // Listen for new orders
-    const ordersRef = collection(db, 'orders');
-    const q = query(
-      ordersRef,
-      where('notificationStatus', '==', 'pending'),
-      orderBy('createdAt', 'desc')
-    );
+      // Listen for new orders with a simpler query
+      const ordersRef = collection(db, 'orders');
+      const q = query(
+        ordersRef,
+        where('notificationStatus', '==', 'pending')
+      );
 
-    return onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const order = { id: change.doc.id, ...change.doc.data() };
-          this.handleNewOrder(order);
-        }
+      return onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const order = { id: change.doc.id, ...change.doc.data() };
+            this.handleNewOrder(order).catch(error => {
+              console.error('Error handling new order:', error);
+            });
+          }
+        });
+      }, (error) => {
+        console.error('Error in order listener:', error);
       });
-    });
+    } catch (error) {
+      console.error('Error initializing notifications:', error);
+      throw error;
+    }
   }
 
   // Handle new order notification
   private async handleNewOrder(order: any) {
     try {
-      // Play sound alert repeatedly
-      this.startRepeatingSound();
+      // Only play sound if tab is visible
+      if (document.visibilityState === 'visible') {
+        this.startRepeatingSound();
+      }
 
       // Show browser notification
       if (Notification.permission === 'granted') {
@@ -51,7 +63,7 @@ class NotificationService {
           body: `Order #${order.id}\nAmount: ₹${order.totalAmount}\nCustomer: ${order.userName}\nPhone: ${order.userPhone}`,
           icon: '/logo192.png',
           tag: order.id,
-          requireInteraction: true // Notification will persist until user interacts
+          requireInteraction: true
         });
 
         // Open order details when notification is clicked
@@ -60,6 +72,12 @@ class NotificationService {
           window.location.href = `/admin/orders/${order.id}`;
           this.stopRepeatingSound();
         };
+
+        // Auto-close notification after 30 seconds if not clicked
+        setTimeout(() => {
+          notification.close();
+          this.stopRepeatingSound();
+        }, 30000);
       }
 
       // Show confirmation dialog with phone numbers
@@ -68,15 +86,19 @@ class NotificationService {
       const shouldCall = window.confirm(message);
       
       if (shouldCall) {
-        // Try primary phone first
-        window.location.href = `tel:${order.userPhone}`;
+        try {
+          window.location.href = `tel:${order.userPhone}`;
+        } catch (error) {
+          console.error('Error initiating phone call:', error);
+        }
       }
 
       // Update order notification status
       await updateDoc(doc(db, 'orders', order.id), {
         notificationStatus: 'sent',
         notificationTimestamp: new Date(),
-        adminPhone: ADMIN_CONFIG.primaryPhone
+        adminPhone: ADMIN_CONFIG.primaryPhone,
+        notificationAttempts: this.retryCount + 1
       });
 
       // Store notification record
@@ -86,25 +108,63 @@ class NotificationService {
         adminPhone: ADMIN_CONFIG.primaryPhone,
         createdAt: new Date(),
         type: 'new_order',
-        status: 'sent'
+        status: 'sent',
+        details: {
+          orderAmount: order.totalAmount,
+          customerName: order.userName,
+          notificationAttempt: this.retryCount + 1
+        }
       });
+
+      // Reset retry count on successful notification
+      this.retryCount = 0;
 
     } catch (error) {
       console.error('Error handling order notification:', error);
+      
+      // Update order with error status
+      try {
+        await updateDoc(doc(db, 'orders', order.id), {
+          notificationStatus: 'error',
+          notificationError: error instanceof Error ? error.message : 'Unknown error occurred',
+          lastNotificationAttempt: new Date(),
+          notificationAttempts: this.retryCount + 1
+        });
+      } catch (updateError) {
+        console.error('Error updating order status:', updateError);
+      }
+
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
-        setTimeout(() => this.handleNewOrder(order), 5000); // Retry after 5 seconds
+        setTimeout(() => this.handleNewOrder(order), 5000);
+      } else {
+        console.error('Max retries reached for notification');
+        this.stopRepeatingSound();
       }
     }
   }
 
   // Start repeating sound alert
   private startRepeatingSound() {
-    this.stopRepeatingSound(); // Clear any existing timeout
+    this.stopRepeatingSound();
+    this.soundStartTime = Date.now();
     
     const playSound = () => {
-      this.audio.currentTime = 0;
-      this.audio.play().catch(console.error);
+      // Check if we've exceeded max duration
+      if (this.soundStartTime && (Date.now() - this.soundStartTime) > this.maxSoundDuration) {
+        this.stopRepeatingSound();
+        return;
+      }
+
+      // Check if user has interacted with the page and tab is visible
+      if (document.visibilityState === 'visible') {
+        this.audio.currentTime = 0;
+        this.audio.play().catch(error => {
+          console.error('Error playing sound:', error);
+          this.stopRepeatingSound();
+        });
+      }
+      
       this.notificationTimeout = setTimeout(playSound, ADMIN_CONFIG.repeatInterval);
     };
 
@@ -119,6 +179,7 @@ class NotificationService {
     }
     this.audio.pause();
     this.audio.currentTime = 0;
+    this.soundStartTime = null;
   }
 
   // Make a phone call notification for a new order

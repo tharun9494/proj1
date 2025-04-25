@@ -194,6 +194,7 @@ const Dashboard = () => {
     show: boolean;
     order: any;
   }>({ show: false, order: null });
+  const [isSoundEnabled, setIsSoundEnabled] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -272,53 +273,26 @@ const Dashboard = () => {
   }, [menuItems]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+
     // Initialize audio immediately when component mounts
     audioRef.current = new Audio('/notification.mp3');
     audioRef.current.load(); // Preload the audio file
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
-  }, []);
 
-  useEffect(() => {
-    // Update orders listener to play sound immediately
-    if (todayOrders.length > previousOrdersCountRef.current) {
-      // Play sound immediately
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0; // Reset to start
-        audioRef.current.play().catch(error => {
-          console.error('Error playing notification sound:', error);
-        });
-      }
-      
-      // Show toast notification
-      toast.success('New order received!', {
-        duration: 2000,
-        position: 'top-center',
-        icon: '🔔'
-      });
-    }
-    previousOrdersCountRef.current = todayOrders.length;
-  }, [todayOrders.length]);
-
-  useEffect(() => {
     // Request notification permission when admin dashboard loads
     if (Notification.permission !== 'granted') {
       Notification.requestPermission();
     }
-  }, []);
-
-  useEffect(() => {
-    if (!isAdmin) return;
 
     // Initialize notifications
     const unsubscribePromise = initializeOrderNotifications();
     
     return () => {
       // Cleanup function
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       unsubscribePromise.then(unsubscribe => {
         if (unsubscribe) {
           unsubscribe();
@@ -326,6 +300,62 @@ const Dashboard = () => {
       });
     };
   }, [isAdmin]);
+
+  // Handle user interaction to enable sound
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      setIsSoundEnabled(true);
+      // Try to play a silent sound to ensure audio context is initialized
+      if (audioRef.current) {
+        audioRef.current.volume = 0;
+        audioRef.current.play().catch(() => {});
+        audioRef.current.volume = 1;
+      }
+      // Remove the event listeners after first interaction
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+
+    // Add event listeners for user interaction
+    document.addEventListener('click', handleUserInteraction);
+    document.addEventListener('keydown', handleUserInteraction);
+
+    return () => {
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Update orders listener to play sound only after user interaction
+    if (todayOrders.length > previousOrdersCountRef.current) {
+      // Show toast notification
+      toast.success('New order received!', {
+        duration: 2000,
+        position: 'top-center',
+        icon: '🔔'
+      });
+
+      // Only play sound if tab is visible, has focus, and sound is enabled
+      if (document.visibilityState === 'visible' && document.hasFocus() && isSoundEnabled) {
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0; // Reset to start
+          audioRef.current.play().catch(error => {
+            console.error('Error playing notification sound:', error);
+            // If the error is due to user interaction, show a message
+            if (error.name === 'NotAllowedError') {
+              toast('Please interact with the page to enable sound notifications', {
+                duration: 3000,
+                position: 'top-center',
+                icon: '🔊'
+              });
+            }
+          });
+        }
+      }
+    }
+    previousOrdersCountRef.current = todayOrders.length;
+  }, [todayOrders.length, isSoundEnabled]);
 
   const handlePopulateMenu = async () => {
     if (!isAdmin) {
@@ -350,9 +380,9 @@ const Dashboard = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Simple query without index requirements
     const ordersQuery = query(
-      collection(db, 'orders'),
-      orderBy('createdAt', 'desc')
+      collection(db, 'orders')
     );
 
     return onSnapshot(ordersQuery, (snapshot) => {
@@ -362,46 +392,48 @@ const Dashboard = () => {
           ...doc.data()
         })) as Order[];
 
-        // Filter today's orders - only include successful online payments and COD orders
-        const todayOrdersList = allOrders.filter(order => {
-          const orderDate = order.createdAt?.toDate();
-          if (!orderDate || orderDate < today) return false;
+        // Client-side filtering and sorting
+        const todayOrdersList = allOrders
+          .filter(order => {
+            const orderDate = order.createdAt?.toDate();
+            if (!orderDate || orderDate < today) return false;
 
-          // Include only if:
-          // 1. Online payment with success status
-          // 2. COD orders (regardless of payment status)
-          return (
-            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-            order.paymentMethod === 'COD'
-          );
-        }).sort((a, b) => {
-          // Sort by createdAt in descending order (newest first)
-          const dateA = a.createdAt?.toDate() || new Date();
-          const dateB = b.createdAt?.toDate() || new Date();
-          return dateB.getTime() - dateA.getTime();
-        });
+            return (
+              (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+              order.paymentMethod === 'COD'
+            );
+          })
+          .sort((a, b) => {
+            const dateA = a.createdAt?.toDate() || new Date();
+            const dateB = b.createdAt?.toDate() || new Date();
+            return dateB.getTime() - dateA.getTime();
+          });
 
-        // Set today's orders
         setTodayOrders(todayOrdersList);
+
+        // Filter completed orders
+        const completedOrdersList = allOrders
+          .filter(order => order.status === 'completed')
+          .sort((a, b) => {
+            const dateA = a.createdAt?.toDate() || new Date();
+            const dateB = b.createdAt?.toDate() || new Date();
+            return dateB.getTime() - dateA.getTime();
+          });
+        setCompletedOrders(completedOrdersList);
 
         // Calculate revenue with updated logic
         const calculateRevenue = (orders: Order[]) => {
           return orders.reduce((total, order) => {
-            // Calculate total item cost
             const itemCost = order.items.reduce((sum, item) => {
               const quantity = (item as any).quantity || 1;
               return sum + (item.price * quantity);
             }, 0);
-
-            // Add delivery charge if order is under ₹500
             const deliveryCharge = itemCost < 500 ? 40 : 0;
-
-            // Return total including items cost and delivery charge
             return total + itemCost + deliveryCharge;
           }, 0);
         };
 
-        // Calculate today's stats with updated filtering
+        // Calculate today's stats
         const todayStats = {
           total: todayOrdersList.length,
           completed: todayOrdersList.filter(o => o.status === 'completed').length,
@@ -416,50 +448,16 @@ const Dashboard = () => {
           ))
         };
 
-        // Debug log for today's calculations
-        console.log('Today\'s Stats:', {
-          totalOrders: todayStats.total,
-          codOrders: todayStats.codOrders,
-          onlineOrders: todayStats.onlineOrders,
-          totalRevenue: todayStats.revenue,
-          codRevenue: todayStats.codRevenue,
-          onlineRevenue: todayStats.onlineRevenue
-        });
-
-        // Filter completed orders
-        const completedOrdersList = allOrders.filter(order => 
-          order.status === 'completed'
-        );
-        setCompletedOrders(completedOrdersList);
-
-        // Filter past orders (excluding pending online payments)
-        const pastOrdersList = allOrders.filter(order => {
-          const orderDate = order.createdAt?.toDate();
-          if (!orderDate || orderDate >= today) return false;
-
-          return (
-            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-            order.paymentMethod === 'COD'
-          );
-        }).sort((a, b) => {
-          const dateA = a.createdAt?.toDate() || new Date();
-          const dateB = b.createdAt?.toDate() || new Date();
-          return dateB.getTime() - dateA.getTime();
-        });
-        setPastOrders(pastOrdersList);
-
-        // Calculate weekly and monthly periods
+        // Calculate time periods
         const weekAgo = new Date(today);
         weekAgo.setDate(weekAgo.getDate() - 7);
-        
         const monthAgo = new Date(today);
         monthAgo.setDate(monthAgo.getDate() - 30);
 
-        // Filter orders for different time periods (excluding pending online payments)
+        // Filter orders for different time periods
         const weeklyOrders = allOrders.filter(order => {
           const orderDate = order.createdAt?.toDate();
           if (!orderDate || orderDate < weekAgo) return false;
-
           return (
             (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
             order.paymentMethod === 'COD'
@@ -469,7 +467,6 @@ const Dashboard = () => {
         const monthlyOrders = allOrders.filter(order => {
           const orderDate = order.createdAt?.toDate();
           if (!orderDate || orderDate < monthAgo) return false;
-
           return (
             (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
             order.paymentMethod === 'COD'
@@ -507,7 +504,6 @@ const Dashboard = () => {
           }
         };
 
-        console.log('Final Stats:', newStats);
         setOrderStats(newStats);
 
       } catch (error) {
@@ -619,15 +615,22 @@ const Dashboard = () => {
 
   const fetchMessages = () => {
     const messagesQuery = query(
-      collection(db, 'messages'),
-      orderBy('createdAt', 'desc')
+      collection(db, 'messages')
     );
 
     const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const messagesList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Message[];
+      const messagesList = snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Message[];
+      
+      // Sort messages by createdAt in descending order
+      messagesList.sort((a, b) => {
+        const dateA = a.createdAt?.toDate() || new Date();
+        const dateB = b.createdAt?.toDate() || new Date();
+        return dateB.getTime() - dateA.getTime();
+      });
       
       setMessages(messagesList);
     }, (error) => {
