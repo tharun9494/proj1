@@ -23,12 +23,7 @@ const DELIVERY_FEE = {
   COD: 40
 };
 
-const GST_PERCENTAGE = {
-  CGST: 2.50,
-  SGST: 2.50
-};
-
-const DISCOUNT_PERCENTAGE = 5; // 5% discount
+const GST_PERCENTAGE = 2; // 2% GST
 
 // Update delivery fee logic
 const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD') => {
@@ -38,15 +33,9 @@ const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD')
   return 40; // ₹40 delivery fee for orders below ₹500
 };
 
-// Update GST calculation
+// Calculate GST amount
 const calculateGST = (amount: number) => {
-  const cgst = Math.round((amount * GST_PERCENTAGE.CGST) / 100);
-  const sgst = Math.round((amount * GST_PERCENTAGE.SGST) / 100);
-  return { cgst, sgst, total: cgst + sgst };
-};
-
-const calculateDiscount = (amount: number) => {
-  return Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
+  return Math.round((amount * GST_PERCENTAGE) / 100);
 };
 
 const Cart = () => {
@@ -209,12 +198,11 @@ const Cart = () => {
     }
   };
 
-  // Update the calculations in the Cart component
+  // Calculate all amounts including GST
   const subtotal = totalAmount;
-  const discount = calculateDiscount(subtotal);
-  const gst = calculateGST(subtotal - discount); // Calculate GST after discount
-  const deliveryFee = calculateDeliveryFee(subtotal - discount, paymentMethod);
-  const finalAmount = subtotal - discount + gst.total + deliveryFee;
+  const gstAmount = calculateGST(subtotal);
+  const deliveryFee = calculateDeliveryFee(subtotal, paymentMethod);
+  const finalAmount = subtotal + gstAmount + deliveryFee;
 
   // Modify handleCheckout function
   const handleCheckout = async () => {
@@ -249,13 +237,8 @@ const Cart = () => {
         userId: user.id,
         items: items,
         subtotal: subtotal,
-        discount: discount,
-        discountPercentage: DISCOUNT_PERCENTAGE,
-        cgst: gst.cgst,
-        sgst: gst.sgst,
-        totalGst: gst.total,
-        cgstPercentage: GST_PERCENTAGE.CGST,
-        sgstPercentage: GST_PERCENTAGE.SGST,
+        gstAmount: gstAmount,
+        gstPercentage: GST_PERCENTAGE,
         deliveryFee: deliveryFee,
         finalAmount: finalAmount,
         address: address,
@@ -607,22 +590,10 @@ const Cart = () => {
                     <dd className="text-xs md:text-sm font-medium text-gray-900">₹{subtotal}</dd>
                   </div>
                   
-                  {/* Discount Section */}
+                  {/* GST Section */}
                   <div className="py-2 md:py-4 flex items-center justify-between">
-                    <dt className="text-xs md:text-sm text-gray-600">Discount ({DISCOUNT_PERCENTAGE}%)</dt>
-                    <dd className="text-xs md:text-sm font-medium text-green-600">-₹{discount}</dd>
-                  </div>
-
-                  {/* CGST Section */}
-                  <div className="py-2 md:py-4 flex items-center justify-between">
-                    <dt className="text-xs md:text-sm text-gray-600">CGST ({GST_PERCENTAGE.CGST}%)</dt>
-                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{gst.cgst}</dd>
-                  </div>
-
-                  {/* SGST Section */}
-                  <div className="py-2 md:py-4 flex items-center justify-between">
-                    <dt className="text-xs md:text-sm text-gray-600">SGST ({GST_PERCENTAGE.SGST}%)</dt>
-                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{gst.sgst}</dd>
+                    <dt className="text-xs md:text-sm text-gray-600">GST ({GST_PERCENTAGE}%)</dt>
+                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{gstAmount}</dd>
                   </div>
                   
                   {/* Delivery Fee Section with Info */}
