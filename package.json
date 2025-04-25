@@ -17,8 +17,6 @@
     "clsx": "^2.1.0",
     "crypto-js": "^4.2.0",
     "firebase": "^10.8.0",
-    "firebase-admin": "^13.2.0",
-    "firebase-functions": "^6.3.2",
     "framer-motion": "^11.0.8",
     "lucide-react": "^0.344.0",
     "next": "^15.2.4",
@@ -29,8 +27,7 @@
     "react-native": "^0.71.0",
     "react-native-razorpay": "^2.3.0",
     "react-router-dom": "^6.30.0",
-    "recharts": "^2.12.2",
-    "twilio": "^5.5.2"
+    "recharts": "^2.12.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
