@@ -2,18 +2,15 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { Twilio } from 'twilio';
-import { setTimeout } from 'timers/promises';
 
 // Initialize Firebase Admin
 initializeApp();
-const db = getFirestore();
 
 // Initialize Twilio client with environment variables
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER;
-const backupPhoneNumber = process.env.BACKUP_PHONE_NUMBER; // Add a backup number
 
 if (!accountSid || !authToken || !twilioPhoneNumber || !adminPhoneNumber) {
   throw new Error('Missing required environment variables for Twilio configuration');
@@ -21,13 +18,9 @@ if (!accountSid || !authToken || !twilioPhoneNumber || !adminPhoneNumber) {
 
 const twilioClient = new Twilio(accountSid, authToken);
 
-const MAX_CALL_ATTEMPTS = 3;
-const RETRY_DELAY = 2 * 60 * 1000; // 2 minutes between attempts
-
 // Listen for new orders
 export const makeOrderCall = onDocumentCreated('orders/{orderId}', async (event) => {
   const orderData = event.data?.data();
-  const orderId = event.params.orderId;
   
   if (!orderData) {
     console.error('No data associated with the order');
@@ -35,24 +28,22 @@ export const makeOrderCall = onDocumentCreated('orders/{orderId}', async (event)
   }
 
   try {
-    // Format the amount with proper currency symbol
-    const formattedAmount = new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR'
-    }).format(orderData.totalAmount);
-
-    // Create call request document to track attempts
-    const callRequestRef = await db.collection('callRequests').add({
-      orderId: orderId,
-      attempts: 0,
-      maxAttempts: MAX_CALL_ATTEMPTS,
-      status: 'pending',
-      createdAt: new Date(),
-      lastAttempt: null,
-      callStatus: [],
-      smsStatus: []
+    // Make the call using Twilio
+    await twilioClient.calls.create({
+      to: adminPhoneNumber,
+      from: twilioPhoneNumber,
+      twiml: `
+        <Response>
+          <Say>New order received! Order ID: ${orderData.orderId}. 
+          Amount: ${orderData.finalAmount} rupees.
+          Payment method: ${orderData.paymentMethod}.</Say>
+          <Pause length="2"/>
+          <Say>Please check your dashboard for order details.</Say>
+        </Response>
+      `
     });
 
+<<<<<<< HEAD
     // Function to make a call attempt
     const makeCallAttempt = async (attemptNumber: number) => {
       try {
@@ -153,18 +144,21 @@ export const makeOrderCall = onDocumentCreated('orders/{orderId}', async (event)
     }
 
     // Update the order with notification status
+=======
+    // Update the order with call status
+>>>>>>> parent of 81d0989 (update)
     await event.data?.ref.update({
-      notificationStatus: callSuccess ? 'call_successful' : 'fallback_to_sms',
-      notificationTimestamp: new Date()
+      callStatus: 'completed',
+      callCompletedAt: new Date()
     });
 
+    console.log('Call made successfully for order:', orderData.orderId);
   } catch (error) {
-    console.error('Error in order notification process:', error);
-    // Update order with error status
+    console.error('Error making call:', error);
     await event.data?.ref.update({
-      notificationStatus: 'failed',
-      notificationError: error instanceof Error ? error.message : 'Unknown error',
-      notificationTimestamp: new Date()
+      callStatus: 'failed',
+      callError: error instanceof Error ? error.message : 'Unknown error',
+      callCompletedAt: new Date()
     });
   }
 }); 
