@@ -16,7 +16,10 @@ import {
   ChevronUp, 
   Phone,
   Clock,
-  XCircle
+  XCircle,
+  DollarSign,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { 
   collection, 
@@ -61,13 +64,18 @@ interface MenuItem {
   image: string;
   createdAt?: Date;
   isAvailable?: boolean;
+  quantity?: number;
+}
+
+interface OrderItem extends MenuItem {
+  quantity: number;
 }
 
 interface Order {
   id: string;
   status: 'pending' | 'completed';
   totalAmount: number;
-  items: MenuItem[];
+  items: OrderItem[];
   createdAt: any;
   userName: string;
   userPhone: string;
@@ -114,6 +122,26 @@ interface Offer {
   originalPrice: number;
 }
 
+interface RevenueStats {
+  daily: {
+    total: number;
+    change: number;
+    trend: 'up' | 'down';
+  };
+  weekly: {
+    total: number;
+    change: number;
+    trend: 'up' | 'down';
+  };
+  monthly: {
+    total: number;
+    change: number;
+    trend: 'up' | 'down';
+  };
+}
+
+type Unsubscribe = () => void;
+
 const Dashboard = () => {
   const { isAdmin } = useAuth();
   const [totalItems, setTotalItems] = useState(0);
@@ -141,13 +169,7 @@ const Dashboard = () => {
   const [showAllItems, setShowAllItems] = useState(false);
   const ITEMS_PER_PAGE = 5; // Number of items to show initially
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [restaurantStatus, setRestaurantStatus] = useState<{
-    isOpen: boolean;
-    lastUpdated: Timestamp;
-  }>({
-    isOpen: true,
-    lastUpdated: Timestamp.now(),
-  });
+  const [restaurantStatus, setRestaurantStatus] = useState<boolean>(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryAvailability, setCategoryAvailability] = useState<Record<string, boolean>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -173,19 +195,67 @@ const Dashboard = () => {
     order: any;
   }>({ show: false, order: null });
   const [isSoundEnabled, setIsSoundEnabled] = useState(false);
+  const [revenueStats, setRevenueStats] = useState<RevenueStats>({
+    daily: { total: 0, change: 0, trend: 'up' },
+    weekly: { total: 0, change: 0, trend: 'up' },
+    monthly: { total: 0, change: 0, trend: 'up' }
+  });
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [filteredMenuItems, setFilteredMenuItems] = useState<any[]>([]);
+  // Add state for expanded categories
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const ITEMS_PER_CATEGORY = 5; // Number of items to show initially per category
 
+  const initialOfferState = {
+    title: '',
+    description: '',
+    type: 'discount' as const,
+    discountPercentage: 0,
+    offerPrice: 0,
+    validUntil: new Date(),
+    isActive: true,
+    image: '',
+    menuItemId: '',
+    menuItemName: '',
+    originalPrice: 0
+  };
+
+  // Add predefined categories
+  const predefinedCategories = [
+    'Biryani',
+    'Soups',
+    'Chicken Starters',
+    'PRAWNS DRY',
+    'Fried Rice',
+    'CHICKEN GRAVY',
+    'Tandoori',
+    'DRY VEGETARIAN',
+    'VEG. GRAVY',
+    'TANDOORI ROTI',
+    'Noodles',
+    'Pulao',
+    'FISH DRY',
+    'MUTTON DRY',
+    'Curd Rice',
+    'EGG STARTERS & GRAVY',
+    'Drinks'
+  ];
+
+  // Initialize dashboard data
   useEffect(() => {
     const initializeDashboard = async () => {
       try {
         setIsLoading(true);
         if (!isAdmin) return;
 
-        await fetchDashboardData();
-        await fetchRestaurantStatus();
-        const unsubscribe = setupOrdersListener();
+        // Setup listeners
+        const unsubOrders = setupOrdersListener();
+        const unsubMessages = fetchMessages();
         
         return () => {
-          if (unsubscribe) unsubscribe();
+          if (unsubOrders) unsubOrders();
+          if (unsubMessages) unsubMessages();
         };
       } catch (error) {
         console.error('Error initializing dashboard:', error);
@@ -195,61 +265,62 @@ const Dashboard = () => {
       }
     };
 
-    initializeDashboard();
+    const cleanup = initializeDashboard();
+    return () => {
+      if (cleanup) cleanup.then(unsub => unsub && unsub());
+    };
   }, [isAdmin]);
 
   useEffect(() => {
-    const statusRef = doc(db, 'restaurant', 'status');
-    
-    // Set initial status if it doesn't exist
-    getDoc(statusRef).then((doc) => {
-      if (!doc.exists()) {
-        setDoc(statusRef, {
-          isOpen: true,
-          lastUpdated: Timestamp.now(),
-        }).catch((error) => {
-          console.error('Error setting initial restaurant status:', error);
-          toast.error('Failed to initialize restaurant status');
-        });
-      }
-    }).catch((error) => {
-      console.error('Error checking restaurant status:', error);
-      toast.error('Failed to load restaurant status');
-    });
+    if (!isAdmin) return;
 
-    // Listen for status changes
-    const unsubscribe = onSnapshot(statusRef, 
-      (doc) => {
-        if (doc.exists()) {
-          const data = doc.data();
-          setRestaurantStatus({
-            isOpen: data.isOpen,
-            lastUpdated: data.lastUpdated
-          });
-        }
-      },
-      (error) => {
-        console.error('Error listening to restaurant status:', error);
-        toast.error('Failed to load restaurant status');
-      }
-    );
+    const menuRef = collection(db, 'menuItems');
+    console.log('Setting up menu items listener...'); // Debug log
+
+    const unsubscribe = onSnapshot(menuRef, (snapshot) => {
+      console.log('Received snapshot with', snapshot.size, 'items'); // Debug log
+      
+      const items = snapshot.docs.map(doc => {
+        const data = doc.data();
+        // Ensure category matches one of the predefined categories
+        const category = predefinedCategories.includes(data.category) 
+          ? data.category 
+          : 'Uncategorized';
+        
+        return {
+          id: doc.id,
+          ...data,
+          category,
+          isAvailable: data.isAvailable !== false // default to true if not specified
+        } as MenuItem;
+      });
+
+      console.log('Processed items:', items.length); // Debug log
+      
+      // Sort items by category
+      items.sort((a, b) => {
+        const catA = predefinedCategories.indexOf(a.category);
+        const catB = predefinedCategories.indexOf(b.category);
+        return catA - catB;
+      });
+
+      setMenuItems(items);
+      setFilteredMenuItems(items);
+      setTotalItems(items.length);
+      setCategories(predefinedCategories);
+      
+      // Initialize category availability
+      const availability: Record<string, boolean> = {};
+      predefinedCategories.forEach(category => {
+        const categoryItems = items.filter(item => item.category === category);
+        availability[category] = categoryItems.length > 0 && 
+          categoryItems.every(item => item.isAvailable !== false);
+      });
+      setCategoryAvailability(availability);
+    });
 
     return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    // Update categories when menu items change
-    const uniqueCategories = Array.from(new Set(menuItems.map(item => item.category)));
-    setCategories(uniqueCategories);
-    
-    // Initialize category availability
-    const availability: Record<string, boolean> = {};
-    uniqueCategories.forEach(category => {
-      const categoryItems = menuItems.filter(item => item.category === category);
-      availability[category] = categoryItems.every(item => item.isAvailable !== false);
-    });
-    setCategoryAvailability(availability);
-  }, [menuItems]);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -262,9 +333,6 @@ const Dashboard = () => {
     if (Notification.permission !== 'granted') {
       Notification.requestPermission();
     }
-
-    // Initialize notifications
-    const unsubscribePromise = initializeOrderNotifications();
     
     return () => {
       // Cleanup function
@@ -272,11 +340,6 @@ const Dashboard = () => {
         audioRef.current.pause();
         audioRef.current = null;
       }
-      unsubscribePromise.then(unsubscribe => {
-        if (unsubscribe) {
-          unsubscribe();
-        }
-      });
     };
   }, [isAdmin]);
 
@@ -318,55 +381,51 @@ const Dashboard = () => {
     previousOrdersCountRef.current = todayOrders.length;
   }, [todayOrders.length]);
 
+  // Fix restaurant status listener
   useEffect(() => {
-    // Request notification permission when admin dashboard loads
-    if (Notification.permission !== 'granted') {
-      Notification.requestPermission();
-    }
+    const statusRef = doc(db, 'restaurant', 'status');
+    
+    // Set initial status if it doesn't exist
+    getDoc(statusRef).then((docSnapshot) => {
+      if (!docSnapshot.exists()) {
+        setDoc(statusRef, {
+          isOpen: true,
+          lastUpdated: serverTimestamp(),
+        }).catch((error) => {
+          console.error('Error setting initial restaurant status:', error);
+          toast.error('Failed to initialize restaurant status');
+        });
+      }
+    }).catch((error) => {
+      console.error('Error checking restaurant status:', error);
+      toast.error('Failed to load restaurant status');
+    });
+
+    // Listen for status changes
+    const unsubscribe = onSnapshot(statusRef, 
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const data = docSnapshot.data();
+          setRestaurantStatus(data.isOpen);
+        }
+      },
+      (error) => {
+        console.error('Error listening to restaurant status:', error);
+        toast.error('Failed to load restaurant status');
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    // Initialize notifications
-    const unsubscribePromise = initializeOrderNotifications();
-    
-    return () => {
-      // Cleanup function
-      unsubscribePromise.then(unsubscribe => {
-        if (unsubscribe) {
-          unsubscribe();
-        }
-      });
-    };
-  }, [isAdmin]);
-
-  const handlePopulateMenu = async () => {
-    if (!isAdmin) {
-      toast.error('Admin access required');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      await populateMenu();
-      toast.success('Menu populated successfully');
-      await fetchDashboardData();
-    } catch (error) {
-      console.error('Error populating menu:', error);
-      toast.error('Failed to populate menu');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Fix orders listener and stats calculation
   const setupOrdersListener = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Simple query without index requirements
     const ordersQuery = query(
-      collection(db, 'orders')
+      collection(db, 'orders'),
+      orderBy('createdAt', 'desc')
     );
 
     return onSnapshot(ordersQuery, (snapshot) => {
@@ -376,15 +435,16 @@ const Dashboard = () => {
           ...doc.data()
         })) as Order[];
 
-        // Client-side filtering and sorting
+        // Filter today's orders
         const todayOrdersList = allOrders
           .filter(order => {
             const orderDate = order.createdAt?.toDate();
             if (!orderDate || orderDate < today) return false;
 
             return (
-              (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-              order.paymentMethod === 'COD'
+              order.status !== 'completed' && 
+              ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+              order.paymentMethod === 'COD')
             );
           })
           .sort((a, b) => {
@@ -405,90 +465,15 @@ const Dashboard = () => {
           });
         setCompletedOrders(completedOrdersList);
 
-        // Calculate revenue with updated logic
-        const calculateRevenue = (orders: Order[]) => {
-          return orders.reduce((total, order) => {
-            const itemCost = order.items.reduce((sum, item) => {
-              const quantity = (item as any).quantity || 1;
-              return sum + (item.price * quantity);
-            }, 0);
-            const deliveryCharge = itemCost < 500 ? 40 : 0;
-            return total + itemCost + deliveryCharge;
-          }, 0);
-        };
+        // Calculate total orders (unique orders)
+        const uniqueOrders = new Set([
+          ...todayOrdersList.map(order => order.id),
+          ...completedOrdersList.map(order => order.id)
+        ]);
+        setTotalOrders(uniqueOrders.size);
 
-        // Calculate today's stats
-        const todayStats = {
-          total: todayOrdersList.length,
-          completed: todayOrdersList.filter(o => o.status === 'completed').length,
-          codOrders: todayOrdersList.filter(o => o.paymentMethod === 'COD').length,
-          onlineOrders: todayOrdersList.filter(o => 
-            o.paymentMethod === 'ONLINE' && o.paymentStatus === 'success'
-          ).length,
-          revenue: calculateRevenue(todayOrdersList),
-          codRevenue: calculateRevenue(todayOrdersList.filter(o => o.paymentMethod === 'COD')),
-          onlineRevenue: calculateRevenue(todayOrdersList.filter(o => 
-            o.paymentMethod === 'ONLINE' && o.paymentStatus === 'success'
-          ))
-        };
-
-        // Calculate time periods
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        const monthAgo = new Date(today);
-        monthAgo.setDate(monthAgo.getDate() - 30);
-
-        // Filter orders for different time periods
-        const weeklyOrders = allOrders.filter(order => {
-          const orderDate = order.createdAt?.toDate();
-          if (!orderDate || orderDate < weekAgo) return false;
-          return (
-            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-            order.paymentMethod === 'COD'
-          );
-        });
-
-        const monthlyOrders = allOrders.filter(order => {
-          const orderDate = order.createdAt?.toDate();
-          if (!orderDate || orderDate < monthAgo) return false;
-          return (
-            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-            order.paymentMethod === 'COD'
-          );
-        });
-
-        // Update order stats
-        const newStats = {
-          daily: todayStats,
-          weekly: {
-            total: weeklyOrders.length,
-            completed: weeklyOrders.filter(o => o.status === 'completed').length,
-            codOrders: weeklyOrders.filter(o => o.paymentMethod === 'COD').length,
-            onlineOrders: weeklyOrders.filter(o => 
-              o.paymentMethod === 'ONLINE' && o.paymentStatus === 'success'
-            ).length,
-            revenue: calculateRevenue(weeklyOrders),
-            codRevenue: calculateRevenue(weeklyOrders.filter(o => o.paymentMethod === 'COD')),
-            onlineRevenue: calculateRevenue(weeklyOrders.filter(o => 
-              o.paymentMethod === 'ONLINE' && o.paymentStatus === 'success'
-            ))
-          },
-          monthly: {
-            total: monthlyOrders.length,
-            completed: monthlyOrders.filter(o => o.status === 'completed').length,
-            codOrders: monthlyOrders.filter(o => o.paymentMethod === 'COD').length,
-            onlineOrders: monthlyOrders.filter(o => 
-              o.paymentMethod === 'ONLINE' && o.paymentStatus === 'success'
-            ).length,
-            revenue: calculateRevenue(monthlyOrders),
-            codRevenue: calculateRevenue(monthlyOrders.filter(o => o.paymentMethod === 'COD')),
-            onlineRevenue: calculateRevenue(monthlyOrders.filter(o => 
-              o.paymentMethod === 'ONLINE' && o.paymentStatus === 'success'
-            ))
-          }
-        };
-
-        setOrderStats(newStats);
+        // Calculate revenue stats
+        calculateRevenueStats([...todayOrdersList, ...completedOrdersList]);
 
       } catch (error) {
         console.error('Error processing orders:', error);
@@ -497,78 +482,312 @@ const Dashboard = () => {
     });
   };
 
-  const fetchDashboardData = async () => {
-    if (!isAdmin) {
-      toast.error('Admin access required');
-      return;
-    }
-
+  // Calculate revenue statistics
+  const calculateRevenueStats = (orders: Order[]) => {
     try {
-      setIsLoading(true);
-      const menuSnapshot = await getDocs(collection(db, 'menuItems'));
-      const uniqueItems = new Map();
+      const now = new Date();
       
-      menuSnapshot.docs.forEach(doc => {
-        const item = { id: doc.id, ...doc.data() } as MenuItem;
-        const lowerCaseName = item.name.toLowerCase();
+      // Set up time periods
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      // Calculate daily revenue (today's revenue)
+      const dailyTotal = orders.reduce((total, order) => {
+        if (!order.createdAt || !order.totalAmount) return total;
         
-        if (!uniqueItems.has(lowerCaseName) || 
-            (item.createdAt && uniqueItems.get(lowerCaseName).createdAt && 
-            item.createdAt > uniqueItems.get(lowerCaseName).createdAt)) {
-          uniqueItems.set(lowerCaseName, item);
+        const orderDate = order.createdAt.toDate();
+        // Check if order is from today
+        if (orderDate.getDate() === today.getDate() &&
+            orderDate.getMonth() === today.getMonth() &&
+            orderDate.getFullYear() === today.getFullYear()) {
+          
+          // Include order if it's completed or has valid payment
+          const isValidOrder = 
+            order.status === 'completed' || 
+            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+            order.paymentMethod === 'COD';
+          
+          if (isValidOrder) {
+            return total + order.totalAmount;
+          }
         }
+        return total;
+            }, 0);
+
+      // Calculate yesterday's revenue for comparison
+      const yesterdayTotal = orders.reduce((total, order) => {
+        if (!order.createdAt || !order.totalAmount) return total;
+        
+        const orderDate = order.createdAt.toDate();
+        // Check if order is from yesterday
+        if (orderDate.getDate() === yesterday.getDate() &&
+            orderDate.getMonth() === yesterday.getMonth() &&
+            orderDate.getFullYear() === yesterday.getFullYear()) {
+          
+          const isValidOrder = 
+            order.status === 'completed' || 
+            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+            order.paymentMethod === 'COD';
+          
+          if (isValidOrder) {
+            return total + order.totalAmount;
+          }
+        }
+        return total;
+      }, 0);
+      
+      // Get start of current week (Sunday)
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay());
+      
+      // Get start of last week
+      const lastWeekStart = new Date(weekStart);
+      lastWeekStart.setDate(weekStart.getDate() - 7);
+      
+      // Get start of current month
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      
+      // Get start of last month
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+
+      // Helper function to calculate total amount for a period
+      const calculateTotalForPeriod = (startDate: Date, endDate?: Date) => {
+        return orders.reduce((total, order) => {
+          if (!order.createdAt || !order.totalAmount) return total;
+          
+          const orderDate = order.createdAt.toDate();
+          const isValidOrder = 
+            order.status === 'completed' || 
+            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+            order.paymentMethod === 'COD';
+          
+          if (!isValidOrder) return total;
+          
+          if (endDate) {
+            if (orderDate >= startDate && orderDate < endDate) {
+              return total + order.totalAmount;
+            }
+          } else {
+            if (orderDate >= startDate) {
+              return total + order.totalAmount;
+            }
+          }
+          return total;
+          }, 0);
+        };
+
+      // Calculate weekly and monthly totals
+      const weeklyTotal = calculateTotalForPeriod(weekStart);
+      const lastWeekTotal = calculateTotalForPeriod(lastWeekStart, weekStart);
+      const monthlyTotal = calculateTotalForPeriod(monthStart);
+      const lastMonthTotal = calculateTotalForPeriod(lastMonthStart, monthStart);
+
+      // Calculate percentage changes
+      const calculateChange = (current: number, previous: number) => {
+        if (previous === 0) return current > 0 ? 100 : 0;
+        return ((current - previous) / previous) * 100;
+      };
+
+      const dailyChange = calculateChange(dailyTotal, yesterdayTotal);
+      const weeklyChange = calculateChange(weeklyTotal, lastWeekTotal);
+      const monthlyChange = calculateChange(monthlyTotal, lastMonthTotal);
+
+      // Log revenue calculations for debugging
+      console.log('Revenue Calculations:', {
+        daily: { 
+          current: dailyTotal, 
+          previous: yesterdayTotal, 
+          change: dailyChange,
+          date: today.toLocaleDateString()
+        },
+        weekly: { current: weeklyTotal, previous: lastWeekTotal, change: weeklyChange },
+        monthly: { current: monthlyTotal, previous: lastMonthTotal, change: monthlyChange }
       });
 
-      const items = Array.from(uniqueItems.values());
-      setMenuItems(items);
-      setTotalItems(items.length);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      toast.error('Failed to load dashboard data');
-    } finally {
-      setIsLoading(false);
+      // Update revenue stats state
+      setRevenueStats({
+        daily: {
+          total: dailyTotal,
+          change: Math.abs(dailyChange),
+          trend: dailyChange >= 0 ? 'up' : 'down'
+        },
+          weekly: {
+          total: weeklyTotal,
+          change: Math.abs(weeklyChange),
+          trend: weeklyChange >= 0 ? 'up' : 'down'
+          },
+          monthly: {
+          total: monthlyTotal,
+          change: Math.abs(monthlyChange),
+          trend: monthlyChange >= 0 ? 'up' : 'down'
+        }
+      });
+      } catch (error) {
+      console.error('Error calculating revenue:', error);
+      toast.error('Failed to calculate revenue statistics');
     }
   };
 
-  const handleAddItem = async () => {
+  // Update revenue stats when orders change
+  useEffect(() => {
+    const allOrders = [...todayOrders, ...completedOrders];
+    if (allOrders.length > 0) {
+      calculateRevenueStats(allOrders);
+    }
+  }, [todayOrders, completedOrders]);
+
+  // Revenue Card Component
+  const RevenueCard = ({ title, amount, change, trend }: {
+    title: string;
+    amount: number;
+    change: number;
+    trend: 'up' | 'down';
+  }) => (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white p-4 rounded-lg shadow-md"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <p className="text-2xl font-bold text-gray-700">₹{amount.toLocaleString()}</p>
+          <div className="flex items-center mt-1">
+            <span className={`text-sm ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+              {trend === 'up' ? <ArrowUp className="h-4 w-4 inline" /> : <ArrowDown className="h-4 w-4 inline" />}
+              {change.toFixed(1)}%
+            </span>
+            <span className="text-sm text-gray-500 ml-2">
+              vs {title.toLowerCase() === 'daily revenue' ? 'yesterday' : 
+                  title.toLowerCase() === 'weekly revenue' ? 'last week' : 'last month'}
+            </span>
+          </div>
+        </div>
+        <DollarSign className={`h-8 w-8 ${
+          title.toLowerCase().includes('daily') ? 'text-green-500' :
+          title.toLowerCase().includes('weekly') ? 'text-blue-500' : 'text-purple-500'
+        }`} />
+      </div>
+    </motion.div>
+  );
+
+  // Revenue Cards Section in JSX
+  const renderRevenueCards = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6">
+      <RevenueCard
+        title="Daily Revenue"
+        amount={revenueStats.daily.total}
+        change={revenueStats.daily.change}
+        trend={revenueStats.daily.trend}
+      />
+      <RevenueCard
+        title="Weekly Revenue"
+        amount={revenueStats.weekly.total}
+        change={revenueStats.weekly.change}
+        trend={revenueStats.weekly.trend}
+      />
+      <RevenueCard
+        title="Monthly Revenue"
+        amount={revenueStats.monthly.total}
+        change={revenueStats.monthly.change}
+        trend={revenueStats.monthly.trend}
+      />
+    </div>
+  );
+
+  const fetchMessages = () => {
+    const messagesRef = collection(db, 'messages');
+    const q = query(messagesRef, orderBy('timestamp', 'desc'));
+    
+    return onSnapshot(q, (querySnapshot) => {
+      const messages = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Message[];
+      setMessages(messages);
+    });
+  };
+
+  const handleAddItem = async (itemData: Omit<MenuItem, 'id'>) => {
     try {
-      await addDoc(collection(db, 'menuItems'), {
-        ...newItem,
+      const menuRef = collection(db, 'menuItems');
+      await addDoc(menuRef, {
+        ...itemData,
         isAvailable: true,
         createdAt: serverTimestamp()
       });
+      toast.success('Item added successfully');
       setIsAddingItem(false);
       setNewItem({
         name: '',
         price: 0,
         description: '',
         category: '',
-        image: '',
-        isAvailable: true
+        image: ''
       });
-      toast.success('Item added successfully');
-      fetchDashboardData();
     } catch (error) {
       console.error('Error adding item:', error);
       toast.error('Failed to add item');
     }
   };
 
-  const handleUpdateItem = async () => {
-    if (!editingItem) return;
-
+  const handleToggleRestaurantStatus = async () => {
     try {
-      const itemRef = doc(db, 'menuItems', editingItem.id);
-      await updateDoc(itemRef, {
-        ...editingItem,
+      const restaurantRef = doc(db, 'restaurant', 'status');
+      await updateDoc(restaurantRef, {
+        isOpen: !restaurantStatus
+      });
+      setRestaurantStatus(!restaurantStatus);
+      toast.success(`Restaurant is now ${!restaurantStatus ? 'open' : 'closed'}`);
+    } catch (error) {
+      console.error('Error toggling restaurant status:', error);
+      toast.error('Failed to update restaurant status');
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, {
+        status: newStatus,
         updatedAt: serverTimestamp()
       });
-      setEditingItem(null);
-      toast.success('Item updated successfully');
-      fetchDashboardData();
+      toast.success('Order status updated successfully');
     } catch (error) {
-      console.error('Error updating item:', error);
-      toast.error('Failed to update item');
+      console.error('Error updating order status:', error);
+      toast.error('Failed to update order status');
+    }
+  };
+
+  const handleResetAllAvailability = async () => {
+    try {
+      const menuRef = collection(db, 'menuItems');
+      const querySnapshot = await getDocs(menuRef);
+      
+      const batch = writeBatch(db);
+      querySnapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, { isAvailable: true });
+      });
+      
+      await batch.commit();
+      toast.success('All items are now available');
+    } catch (error) {
+      console.error('Error resetting availability:', error);
+      toast.error('Failed to reset availability');
+    }
+  };
+
+  const handleToggleAvailability = async (itemId: string, currentStatus: boolean) => {
+    try {
+      const itemRef = doc(db, 'menuItems', itemId);
+      await updateDoc(itemRef, {
+        isAvailable: !currentStatus
+      });
+      toast.success(`Item ${!currentStatus ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+      console.error('Error toggling availability:', error);
+      toast.error('Failed to toggle availability');
     }
   };
 
@@ -576,505 +795,89 @@ const Dashboard = () => {
     try {
       await deleteDoc(doc(db, 'menuItems', itemId));
       toast.success('Item deleted successfully');
-      fetchDashboardData();
     } catch (error) {
       console.error('Error deleting item:', error);
       toast.error('Failed to delete item');
     }
   };
 
-  const handleUpdateOrderStatus = async (orderId: string, status: 'completed' | 'pending') => {
+  const handleUpdateItem = async (
+    itemIdOrEvent: string | React.MouseEvent<HTMLButtonElement>,
+    updatedData?: Partial<MenuItem>
+  ) => {
     try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, {
-        status,
-        updatedAt: serverTimestamp()
-      });
-      toast.success(`Order marked as ${status}`);
+      if (typeof itemIdOrEvent === 'object') {
+        // Called from edit modal
+        if (!editingItem) return;
+        const itemRef = doc(db, 'menuItems', editingItem.id);
+        await updateDoc(itemRef, {
+          ...editingItem,
+          updatedAt: serverTimestamp()
+        });
+        setEditingItem(null);
+      } else {
+        // Called directly with ID and data
+        const itemRef = doc(db, 'menuItems', itemIdOrEvent);
+        await updateDoc(itemRef, {
+          ...(updatedData || {}),
+          updatedAt: serverTimestamp()
+        });
+      }
+      toast.success('Item updated successfully');
     } catch (error) {
-      console.error('Error updating order status:', error);
-      toast.error('Failed to update order status');
+      console.error('Error updating item:', error);
+      toast.error('Failed to update item');
     }
   };
 
-  const fetchMessages = () => {
-    const messagesQuery = query(
-      collection(db, 'messages')
-    );
-
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const messagesList = snapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Message[];
+  const toggleCategoryAvailability = async (category: string) => {
+    try {
+      const currentStatus = categoryAvailability[category] || false;
+      const menuRef = collection(db, 'menuItems');
+      const querySnapshot = await getDocs(query(menuRef, where('category', '==', category)));
       
-      // Sort messages by createdAt in descending order
-      messagesList.sort((a, b) => {
-        const dateA = a.createdAt?.toDate() || new Date();
-        const dateB = b.createdAt?.toDate() || new Date();
-        return dateB.getTime() - dateA.getTime();
+      const batch = writeBatch(db);
+      querySnapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, { isAvailable: !currentStatus });
       });
-      
-      setMessages(messagesList);
-    }, (error) => {
-      console.error('Error fetching messages:', error);
-      toast.error('Failed to load messages');
-    });
 
-    return unsubscribe;
+      await batch.commit();
+      setCategoryAvailability(prev => ({
+        ...prev,
+        [category]: !currentStatus
+      }));
+      toast.success(`${category} items ${!currentStatus ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+      console.error('Error toggling category availability:', error);
+      toast.error('Failed to toggle category availability');
+    }
   };
 
   const handleMarkMessageAsRead = async (messageId: string) => {
     try {
       const messageRef = doc(db, 'messages', messageId);
       await updateDoc(messageRef, {
-        status: 'read',
+        read: true,
         updatedAt: serverTimestamp()
       });
       toast.success('Message marked as read');
-    } catch (error) {
-      console.error('Error updating message status:', error);
-      toast.error('Failed to update message status');
+      } catch (error) {
+      console.error('Error marking message as read:', error);
+      toast.error('Failed to mark message as read');
     }
   };
 
-  const formatDateTime = (timestamp: any) => {
-    if (!timestamp || !timestamp.toDate) return { date: 'N/A', time: 'N/A' };
+  const handleToggleOfferStatus = async (offerId: string, currentStatus: boolean) => {
     try {
-      const date = timestamp.toDate();
-      return {
-        date: date.toLocaleDateString('en-US', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric'
-        }),
-        time: date.toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        })
-      };
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return { date: 'N/A', time: 'N/A' };
-    }
-  };
-
-  const handleToggleAvailability = async (item: MenuItem) => {
-    try {
-      const itemRef = doc(db, 'menuItems', item.id);
-      await updateDoc(itemRef, {
-        isAvailable: !item.isAvailable,
+      const offerRef = doc(db, 'offers', offerId);
+      await updateDoc(offerRef, {
+        isActive: !currentStatus,
         updatedAt: serverTimestamp()
       });
-      toast.success(`Item ${!item.isAvailable ? 'made available' : 'marked as unavailable'}`);
-      fetchDashboardData();
+      toast.success(`Offer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
     } catch (error) {
-      console.error('Error toggling availability:', error);
-      toast.error('Failed to update item availability');
-    }
-  };
-
-  const handleResetAllAvailability = async () => {
-    try {
-      setIsLoading(true);
-      const batch = writeBatch(db);
-      const menuSnapshot = await getDocs(collection(db, 'menuItems'));
-      
-      menuSnapshot.docs.forEach(doc => {
-        const itemRef = doc.ref;
-        batch.update(itemRef, {
-          isAvailable: true,
-          updatedAt: serverTimestamp()
-        });
-      });
-      
-      await batch.commit();
-      toast.success('All items reset to available for next day');
-      fetchDashboardData();
-    } catch (error) {
-      console.error('Error resetting availability:', error);
-      toast.error('Failed to reset item availability');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchRestaurantStatus = async () => {
-    try {
-      const statusDoc = await getDoc(doc(db, 'restaurant', 'status'));
-      if (statusDoc.exists()) {
-        setRestaurantStatus(statusDoc.data() as {
-          isOpen: boolean;
-          lastUpdated: Timestamp;
-        });
-      } else {
-        // Initialize status if it doesn't exist
-        await updateDoc(doc(db, 'restaurant', 'status'), {
-          isOpen: true,
-          lastUpdated: Timestamp.now(),
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching restaurant status:', error);
-      toast.error('Failed to load restaurant status');
-    }
-  };
-
-  const handleToggleRestaurantStatus = async () => {
-    try {
-      const statusRef = doc(db, 'restaurant', 'status');
-      const newStatus = !restaurantStatus.isOpen;
-      
-      await updateDoc(statusRef, {
-        isOpen: newStatus,
-        lastUpdated: Timestamp.now(),
-      });
-      
-      toast.success(`Restaurant is now ${newStatus ? 'open' : 'closed'}`);
-    } catch (error) {
-      console.error('Error toggling restaurant status:', error);
-      toast.error('Failed to update restaurant status. Please try again.');
-    }
-  };
-
-  const toggleCategoryAvailability = async (category: string) => {
-    try {
-      const newAvailability = !categoryAvailability[category];
-      setCategoryAvailability(prev => ({
-        ...prev,
-        [category]: newAvailability
-      }));
-
-      // Update all items in the category
-      const categoryItems = menuItems.filter(item => item.category === category);
-      const batch = writeBatch(db);
-      
-      categoryItems.forEach(item => {
-        const itemRef = doc(db, 'menuItems', item.id);
-        batch.update(itemRef, { isAvailable: newAvailability });
-      });
-
-      await batch.commit();
-      toast.success(`All ${category} items are now ${newAvailability ? 'available' : 'unavailable'}`);
-    } catch (error) {
-      console.error('Error updating category availability:', error);
-      toast.error('Failed to update category availability');
-      // Revert the UI state on error
-      setCategoryAvailability(prev => ({
-        ...prev,
-        [category]: !prev[category]
-      }));
-    }
-  };
-
-  const renderOrdersList = (orders: Order[], title: string) => (
-    <div className="bg-white rounded-lg shadow-md p-4 mt-6">
-      <div className="flex items-center justify-between mb-4 sticky top-0 bg-white z-10">
-        <h3 className="text-xl font-semibold">{title}</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">
-            Total: {orders.length}
-          </span>
-          <div className="flex items-center text-xs text-gray-500">
-            <Clock className="h-3 w-3 mr-1" />
-            <span>Newest first</span>
-          </div>
-        </div>
-      </div>
-      {orders.length === 0 ? (
-        <p className="text-gray-500">No orders found</p>
-      ) : (
-        <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-          <div className="space-y-2">
-            {orders.map((order, index) => (
-              <div key={order.id} className="border rounded-lg hover:bg-gray-50 transition-colors">
-                {/* Collapsed View - Always visible */}
-                <div 
-                  className="p-3 cursor-pointer relative"
-                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                >
-                  {/* Serial Number Badge - Using reverse numbering */}
-                  <div className="absolute -left-2 -top-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-medium shadow-sm">
-                    {orders.length - index} {/* This will give reverse numbering */}
-                  </div>
-
-                  <div className="flex items-center justify-between ml-4">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-2 h-2 rounded-full ${
-                        order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                      }`} />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-sm">{order.userName}</h4>
-                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                            #{order.id.slice(-6)}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            (Order #{orders.length - index}) {/* Adding order number in text */}
-                          </span>
-                        </div>
-                        <div className="flex flex-col text-xs space-y-0.5 mt-1">
-                          <div className="flex items-center text-gray-500">
-                            <Clock className="h-3 w-3 mr-1" />
-                            <span className="font-medium text-blue-600">
-                              {formatDateTime(order.createdAt).time}
-                            </span>
-                            <span className="mx-1">•</span>
-                            <Calendar className="h-3 w-3 mr-1" />
-                            <span>{formatDateTime(order.createdAt).date}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span>{order.items.length} items</span>
-                            <span>•</span>
-                            <span className="font-medium">₹{order.totalAmount}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end space-y-1">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        order.paymentMethod === 'COD' 
-                          ? 'bg-yellow-100 text-yellow-800' 
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {order.paymentMethod}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {order.status === 'completed' ? 'Completed' : 'Pending'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expanded View */}
-                {expandedOrderId === order.id && (
-                  <div className="border-t p-3 bg-gray-50">
-                    {/* Order Time and Status */}
-                    <div className="mb-3 p-2 bg-white rounded-md">
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-xs font-medium text-gray-500">Order Number</p>
-                          <p className="text-blue-600 font-medium">#{orders.length - index}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500">Order Time</p>
-                          <p className="text-green-600">{formatDateTime(order.createdAt).time}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500">Order Date</p>
-                          <p className="text-blue-600">{formatDateTime(order.createdAt).date}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500">Status</p>
-                          <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                            order.status === 'completed' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Customer Details */}
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <div>
-                        <h5 className="text-xs font-medium text-gray-500 mb-1">Customer</h5>
-                        <p className="text-sm font-medium">{order.userName}</p>
-                        {/* Primary Phone */}
-                        <div className="flex items-center space-x-2 mt-1">
-                          <p className="text-sm">Primary: {order.userPhone}</p>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`tel:${order.userPhone}`);
-                            }}
-                            className="text-blue-500 hover:text-blue-600"
-                          >
-                            <Phone className="h-4 w-4" />
-                          </button>
-                        </div>
-                        {/* Alternative Phone */}
-                        {order.alternativePhone && (
-                          <div className="flex items-center space-x-2 mt-1">
-                            <p className="text-sm">Alt: {order.alternativePhone}</p>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(`tel:${order.alternativePhone}`);
-                              }}
-                              className="text-blue-500 hover:text-blue-600"
-                            >
-                              <Phone className="h-4 w-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                        <p className="text-sm">{order.address.street}</p>
-                        <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
-                        {order.address.landmark && (
-                          <p className="text-sm text-gray-500 mt-1">
-                            Landmark: {order.address.landmark}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Order Items */}
-                    <div className="mb-3">
-                      <h5 className="text-xs font-medium text-gray-500 mb-1">Items</h5>
-                      <div className="bg-white rounded-md p-2 space-y-1">
-                        {order.items.map((item) => (
-                          <div key={item.id} className="flex justify-between text-sm">
-                            <span>{item.name} × {item.quantity}</span>
-                            <span>₹{item.price * item.quantity}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2 mt-3">
-                      {order.status !== 'completed' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUpdateOrderStatus(order.id, 'completed');
-                          }}
-                          className="flex-1 bg-green-500 text-white py-1.5 px-3 rounded text-sm font-medium hover:bg-green-600"
-                        >
-                          Mark as Completed
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(`tel:${order.userPhone}`);
-                        }}
-                        className="flex-1 bg-blue-500 text-white py-1.5 px-3 rounded text-sm font-medium hover:bg-blue-600"
-                      >
-                        Call Customer
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const filteredMenuItems = menuItems.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Fetch offers
-  useEffect(() => {
-    const fetchOffers = async () => {
-      try {
-        const offersRef = collection(db, 'offers');
-        const q = query(offersRef, orderBy('createdAt', 'desc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-          const offersList = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            validUntil: doc.data().validUntil.toDate(),
-            createdAt: doc.data().createdAt.toDate()
-          })) as Offer[];
-          setOffers(offersList);
-        });
-        return () => unsubscribe();
-      } catch (error) {
-        console.error('Error fetching offers:', error);
-        toast.error('Failed to load offers');
-      }
-    };
-
-    fetchOffers();
-  }, []);
-
-  const handleAddOffer = async () => {
-    try {
-      if (!newOffer.title.trim()) {
-        toast.error('Please enter an offer title');
-        return;
-      }
-      if (!newOffer.description.trim()) {
-        toast.error('Please enter an offer description');
-        return;
-      }
-      if (!newOffer.validUntil) {
-        toast.error('Please select a valid date');
-        return;
-      }
-      if (newOffer.type === 'discount' && (!newOffer.discountPercentage || newOffer.discountPercentage <= 0)) {
-        toast.error('Please enter a valid discount percentage');
-        return;
-      }
-
-      const offerData = {
-        ...newOffer,
-        createdAt: serverTimestamp(),
-        validUntil: Timestamp.fromDate(newOffer.validUntil)
-      };
-
-      const docRef = await addDoc(collection(db, 'offers'), offerData);
-      if (!docRef.id) {
-        throw new Error('Failed to create offer');
-      }
-
-      setIsAddingOffer(false);
-      setNewOffer({
-        title: '',
-        description: '',
-        type: 'discount',
-        discountPercentage: 0,
-        offerPrice: 0,
-        validUntil: new Date(),
-        isActive: true,
-        image: '',
-        menuItemId: '',
-        menuItemName: '',
-        originalPrice: 0
-      });
-      toast.success('Offer added successfully');
-    } catch (error) {
-      console.error('Error adding offer:', error);
-      toast.error('Failed to add offer');
-    }
-  };
-
-  const handleUpdateOffer = async () => {
-    if (!editingOffer) return;
-
-    try {
-      const offerRef = doc(db, 'offers', editingOffer.id);
-      await updateDoc(offerRef, {
-        title: editingOffer.title,
-        description: editingOffer.description,
-        type: editingOffer.type,
-        discountPercentage: editingOffer.discountPercentage,
-        offerPrice: editingOffer.offerPrice,
-        validUntil: Timestamp.fromDate(editingOffer.validUntil),
-        isActive: editingOffer.isActive,
-        image: editingOffer.image,
-        menuItemId: editingOffer.menuItemId,
-        menuItemName: editingOffer.menuItemName,
-        originalPrice: editingOffer.originalPrice
-      });
-      setEditingOffer(null);
-      toast.success('Offer updated successfully');
-    } catch (error) {
-      console.error('Error updating offer:', error);
-      toast.error('Failed to update offer');
+      console.error('Error toggling offer status:', error);
+      toast.error('Failed to toggle offer status');
     }
   };
 
@@ -1088,51 +891,235 @@ const Dashboard = () => {
     }
   };
 
-  const handleToggleOfferStatus = async (offerId: string, currentStatus: boolean) => {
+  const handleAddOffer = async (offerData: Omit<Offer, 'id'>) => {
     try {
-      const offerRef = doc(db, 'offers', offerId);
-      await updateDoc(offerRef, {
-        isActive: !currentStatus
+      const offerRef = collection(db, 'offers');
+      await addDoc(offerRef, {
+        ...offerData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       });
-      toast.success(`Offer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
+      toast.success('Offer added successfully');
     } catch (error) {
-      console.error('Error toggling offer status:', error);
-      toast.error('Failed to update offer status');
+      console.error('Error adding offer:', error);
+      toast.error('Failed to add offer');
     }
   };
 
-  // Add new order listener
-  useEffect(() => {
-    const ordersRef = collection(db, 'orders');
-    const q = query(
-      ordersRef,
-      where('status', '==', 'pending'),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const newOrder = change.doc.data();
-          setNewOrderNotification({
-            show: true,
-            order: newOrder
-          });
-
-          // Play notification sound
-          const audio = new Audio('/notification.mp3');
-          audio.play().catch(err => console.error('Error playing sound:', err));
-        }
+  const handleUpdateOffer = async (
+    offerIdOrEvent: string | React.MouseEvent<HTMLButtonElement>,
+    updatedData?: Partial<Offer>
+  ) => {
+    try {
+      // If called as an event handler
+      if (typeof offerIdOrEvent !== 'string' && updatedData === undefined) {
+        return;
+      }
+      
+      const offerId = typeof offerIdOrEvent === 'string' ? offerIdOrEvent : '';
+      const offerRef = doc(db, 'offers', offerId);
+      await updateDoc(offerRef, {
+        ...(updatedData || {}),
+        updatedAt: serverTimestamp()
       });
-    });
+      toast.success('Offer updated successfully');
+    } catch (error) {
+      console.error('Error updating offer:', error);
+      toast.error('Failed to update offer');
+    }
+  };
 
-    return () => unsubscribe();
-  }, []);
+  // Update search filtering logic
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredMenuItems(menuItems);
+    } else {
+      const query = searchQuery.toLowerCase().trim();
+      const filtered = menuItems.filter(item => 
+        item.name.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query) ||
+        item.description?.toLowerCase().includes(query)
+      );
+      setFilteredMenuItems(filtered);
+    }
+  }, [searchQuery, menuItems]);
 
-  // Function to handle call button click
-  const handleCall = (phoneNumber: string) => {
-    window.location.href = `tel:${phoneNumber}`;
+  // Add event handler for item submission
+  const handleItemSubmit = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    if (editingItem) {
+      handleUpdateItem(editingItem.id, editingItem);
+    } else {
+      handleAddItem(newItem as Omit<MenuItem, 'id'>);
+    }
+  };
+
+  // Update the offer submit handler with proper typing
+  const handleOfferSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    try {
+      if (editingOffer) {
+        await handleUpdateOffer(editingOffer.id, newOffer);
+        setEditingOffer(null);
+      } else {
+        const newOfferWithDate = {
+          ...newOffer,
+          createdAt: new Date()
+        };
+        await handleAddOffer(newOfferWithDate);
+      }
+      setNewOffer(initialOfferState);
+      setIsAddingOffer(false);
+    } catch (error) {
+      console.error('Error submitting offer:', error);
+      toast.error('Failed to submit offer');
+    }
+  };
+
+  // Update the button onClick handler in the JSX
+  <button
+    onClick={handleOfferSubmit}
+    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+  >
+    {editingOffer ? 'Update Offer' : 'Add Offer'}
+  </button>
+
+  // Update the JSX where we render menu items
+  const renderMenuItems = () => {
+    if (!filteredMenuItems.length) {
+      return (
+        <div className="text-center py-4 text-gray-500">
+          <p>No menu items found</p>
+          <button
+            onClick={() => setIsAddingItem(true)}
+            className="mt-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+          >
+            Add Your First Item
+          </button>
+        </div>
+      );
+    }
+
+    // Group items by category
+    const groupedItems = filteredMenuItems.reduce((acc, item: MenuItem) => {
+      if (!acc[item.category]) {
+        acc[item.category] = [];
+      }
+      acc[item.category].push(item);
+      return acc;
+    }, {} as Record<string, MenuItem[]>);
+
+    return (
+      <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+        {predefinedCategories.map(category => {
+          const items = groupedItems[category] || [];
+          if (items.length === 0) return null;
+
+          const isExpanded = expandedCategories[category];
+          const displayedItems = isExpanded ? items : items.slice(0, ITEMS_PER_CATEGORY);
+
+          return (
+            <div key={category} className="bg-white rounded-lg p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{category}</h3>
+                  <p className="text-sm text-gray-500">{items.length} items</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleCategoryAvailability(category)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      categoryAvailability[category]
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {categoryAvailability[category] ? 'Available' : 'Unavailable'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {displayedItems.map((item: MenuItem) => (
+                  <div 
+                    key={item.id} 
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 border rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+                      <img
+                        className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover"
+                        src={item.image || 'default-food-image.jpg'}
+                        alt={item.name}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'default-food-image.jpg';
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm sm:text-base truncate">{item.name}</div>
+                        <div className="text-xs sm:text-sm text-gray-500">₹{item.price}</div>
+                        <div className="text-xs sm:text-sm mt-0.5">
+                          {item.isAvailable ? (
+                            <span className="text-green-600">Available</span>
+                          ) : (
+                            <span className="text-red-600">Unavailable</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-end gap-1 sm:gap-2 mt-2 sm:mt-0">
+                      <button
+                        onClick={() => setEditingItem(item)}
+                        className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded"
+                      >
+                        <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleToggleAvailability(item.id, item.isAvailable)}
+                        className={`p-1.5 sm:p-2 rounded ${
+                          item.isAvailable 
+                            ? 'text-green-600 hover:bg-green-50' 
+                            : 'text-red-600 hover:bg-red-50'
+                        }`}
+                      >
+                        {item.isAvailable ? (
+                          <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        ) : (
+                          <XCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {items.length > ITEMS_PER_CATEGORY && (
+                  <button
+                    onClick={() => setExpandedCategories(prev => ({
+                      ...prev,
+                      [category]: !prev[category]
+                    }))}
+                    className="w-full mt-2 py-2 text-sm text-red-500 hover:bg-red-50 rounded-md flex items-center justify-center gap-1"
+                  >
+                    {isExpanded ? (
+                      <>Show Less <ChevronUp className="h-4 w-4" /></>
+                    ) : (
+                      <>Show More ({items.length - ITEMS_PER_CATEGORY} items) <ChevronDown className="h-4 w-4" /></>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        }).filter(Boolean)}
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -1158,31 +1145,33 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 py-4 sm:py-8">
+    <div className="min-h-screen bg-gray-100">
+      {/* Main Dashboard Content */}
+      <div className="py-2 sm:py-4">
       <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
-        {/* Header Section */}
-        <div className="mb-4 sm:mb-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          {/* Header Section - More compact on mobile */}
+          <div className="mb-3 sm:mb-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-              <p className="text-sm sm:text-base text-gray-600">Manage your restaurant's menu and orders</p>
+                <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+                <p className="text-xs sm:text-base text-gray-600">Manage your restaurant's menu and orders</p>
             </div>
             <button
               onClick={handleToggleRestaurantStatus}
-              className={`w-full sm:w-auto px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
-                restaurantStatus.isOpen
+                className={`w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm sm:text-base font-medium flex items-center justify-center gap-2 ${
+                  restaurantStatus
                   ? 'bg-green-500 text-white hover:bg-green-600'
                   : 'bg-red-500 text-white hover:bg-red-600'
               }`}
             >
-              {restaurantStatus.isOpen ? (
+                {restaurantStatus ? (
                 <>
-                  <CheckCircle className="h-5 w-5" />
+                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
                   Restaurant is Open
                 </>
               ) : (
                 <>
-                  <XCircle className="h-5 w-5" />
+                    <XCircle className="h-4 w-4 sm:h-5 sm:w-5" />
                   Restaurant is Closed
                 </>
               )}
@@ -1190,19 +1179,34 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Stats Cards - Grid layout */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6">
+          {/* Stats Cards - Responsive grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-6">
           {/* Total Items */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-4 rounded-lg shadow-md"
+              className="bg-white p-3 sm:p-4 rounded-lg shadow-md"
           >
             <div className="flex items-center">
-              <Package className="h-8 w-8 text-red-500" />
-              <div className="ml-3">
-                <h2 className="text-base font-semibold text-gray-900">Total Items</h2>
-                <p className="text-2xl font-bold text-gray-700">{totalItems}</p>
+                <Package className="h-6 w-6 sm:h-8 sm:w-8 text-red-500" />
+                <div className="ml-2 sm:ml-3">
+                  <h2 className="text-sm sm:text-base font-semibold text-gray-900">Total Items</h2>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-700">{totalItems}</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Total Orders */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white p-3 sm:p-4 rounded-lg shadow-md"
+            >
+              <div className="flex items-center">
+                <ShoppingBag className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
+                <div className="ml-2 sm:ml-3">
+                  <h2 className="text-sm sm:text-base font-semibold text-gray-900">Total Orders</h2>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-700">{totalOrders}</p>
               </div>
             </div>
           </motion.div>
@@ -1211,19 +1215,18 @@ const Dashboard = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
             onClick={() => setShowTodayOrders(!showTodayOrders)}
-            className="bg-white p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
+              className="bg-white p-3 sm:p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <ShoppingBag className="h-8 w-8 text-blue-500" />
-                <div className="ml-3">
-                  <h2 className="text-base font-semibold text-gray-900">Today's Orders</h2>
-                  <p className="text-2xl font-bold text-gray-700">{todayOrders.length}</p>
+                  <ShoppingBag className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
+                  <div className="ml-2 sm:ml-3">
+                    <h2 className="text-sm sm:text-base font-semibold text-gray-900">Today's Orders</h2>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-700">{todayOrders.length}</p>
                 </div>
               </div>
-              <ChevronDown className={`h-5 w-5 text-gray-400 transform transition-transform ${showTodayOrders ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-400 transform transition-transform ${showTodayOrders ? 'rotate-180' : ''}`} />
             </div>
           </motion.div>
 
@@ -1231,32 +1234,305 @@ const Dashboard = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
             onClick={() => setShowCompletedOrders(!showCompletedOrders)}
-            className="bg-white p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
+              className="bg-white p-3 sm:p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <CheckCircle className="h-8 w-8 text-green-500" />
-                <div className="ml-3">
-                  <h2 className="text-base font-semibold text-gray-900">Completed</h2>
-                  <p className="text-2xl font-bold text-gray-700">{completedOrders.length}</p>
+                  <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
+                  <div className="ml-2 sm:ml-3">
+                    <h2 className="text-sm sm:text-base font-semibold text-gray-900">Completed</h2>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-700">{completedOrders.length}</p>
                 </div>
               </div>
-              <ChevronDown className={`h-5 w-5 text-gray-400 transform transition-transform ${showCompletedOrders ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-400 transform transition-transform ${showCompletedOrders ? 'rotate-180' : ''}`} />
             </div>
           </motion.div>
         </div>
 
-        {/* Orders Lists - Mobile Optimized */}
+          {/* Revenue Stats - Single view with period selector */}
+          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-3 sm:mb-6">
+            <div className="flex flex-col space-y-3">
+              {/* Period Selector */}
+              <div className="flex justify-center p-1 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-3 gap-1 w-full max-w-md">
+                  <button
+                    onClick={() => setSelectedRevenuePeriod('daily')}
+                    className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                      selectedRevenuePeriod === 'daily'
+                        ? 'bg-red-500 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    onClick={() => setSelectedRevenuePeriod('weekly')}
+                    className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                      selectedRevenuePeriod === 'weekly'
+                        ? 'bg-red-500 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Weekly
+                  </button>
+                  <button
+                    onClick={() => setSelectedRevenuePeriod('monthly')}
+                    className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                      selectedRevenuePeriod === 'monthly'
+                        ? 'bg-red-500 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                </div>
+              </div>
+
+              {/* Revenue Display */}
+              <motion.div
+                key={selectedRevenuePeriod}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="bg-white p-4 rounded-lg"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                      {selectedRevenuePeriod.charAt(0).toUpperCase() + selectedRevenuePeriod.slice(1)} Revenue
+                    </h2>
+                    <p className="text-2xl sm:text-3xl font-bold text-gray-700 mt-1">
+                      ₹{revenueStats[selectedRevenuePeriod].total.toLocaleString()}
+                    </p>
+                    <div className="flex items-center mt-2">
+                      <span className={`text-sm ${
+                        revenueStats[selectedRevenuePeriod].trend === 'up' 
+                          ? 'text-green-600' 
+                          : 'text-red-600'
+                      }`}>
+                        {revenueStats[selectedRevenuePeriod].trend === 'up' 
+                          ? <ArrowUp className="h-4 w-4 inline mr-1" /> 
+                          : <ArrowDown className="h-4 w-4 inline mr-1" />
+                        }
+                        {revenueStats[selectedRevenuePeriod].change.toFixed(1)}%
+                      </span>
+                      <span className="text-xs sm:text-sm text-gray-500 ml-2">
+                        vs {selectedRevenuePeriod === 'daily' ? 'yesterday' : 
+                            selectedRevenuePeriod === 'weekly' ? 'last week' : 'last month'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`p-3 rounded-full ${
+                    selectedRevenuePeriod === 'daily' ? 'bg-green-100' :
+                    selectedRevenuePeriod === 'weekly' ? 'bg-blue-100' : 'bg-purple-100'
+                  }`}>
+                    <DollarSign className={`h-6 w-6 sm:h-8 sm:w-8 ${
+                      selectedRevenuePeriod === 'daily' ? 'text-green-500' :
+                      selectedRevenuePeriod === 'weekly' ? 'text-blue-500' : 'text-purple-500'
+                    }`} />
+                  </div>
+                </div>
+
+                {/* Additional Stats */}
+                <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">Orders</p>
+                    <p className="text-lg sm:text-xl font-semibold mt-1">
+                      {selectedRevenuePeriod === 'daily' 
+                        ? todayOrders.length
+                        : selectedRevenuePeriod === 'weekly'
+                        ? completedOrders.filter(order => {
+                            const orderDate = order.createdAt.toDate();
+                            const weekAgo = new Date();
+                            weekAgo.setDate(weekAgo.getDate() - 7);
+                            return orderDate >= weekAgo;
+                          }).length
+                        : completedOrders.filter(order => {
+                            const orderDate = order.createdAt.toDate();
+                            const monthAgo = new Date();
+                            monthAgo.setMonth(monthAgo.getMonth() - 1);
+                            return orderDate >= monthAgo;
+                          }).length
+                      }
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">Avg. Order Value</p>
+                    <p className="text-lg sm:text-xl font-semibold mt-1">
+                      ₹{(revenueStats[selectedRevenuePeriod].total / (
+                        selectedRevenuePeriod === 'daily' 
+                          ? Math.max(todayOrders.length, 1)
+                          : selectedRevenuePeriod === 'weekly'
+                          ? Math.max(completedOrders.filter(order => {
+                              const orderDate = order.createdAt.toDate();
+                              const weekAgo = new Date();
+                              weekAgo.setDate(weekAgo.getDate() - 7);
+                              return orderDate >= weekAgo;
+                            }).length, 1)
+                          : Math.max(completedOrders.filter(order => {
+                              const orderDate = order.createdAt.toDate();
+                              const monthAgo = new Date();
+                              monthAgo.setMonth(monthAgo.getMonth() - 1);
+                              return orderDate >= monthAgo;
+                            }).length, 1)
+                      )).toFixed(0)}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Orders Lists - Better mobile spacing */}
         {showTodayOrders && (
-          <div className="bg-white rounded-lg shadow-md p-3 mt-4 overflow-hidden">
+            <div className="bg-white rounded-lg shadow-md p-2 sm:p-4 mb-3 sm:mb-4">
+              <div className="flex items-center justify-between mb-2 sm:mb-4 sticky top-0 bg-white z-10 py-2">
+                <h3 className="text-base sm:text-lg font-semibold">Today's Orders</h3>
+                <span className="text-xs sm:text-sm text-gray-600">Total: {todayOrders.length}</span>
+              </div>
+              <div className="space-y-2 sm:space-y-3 max-h-[60vh] overflow-y-auto">
+                {todayOrders.map((order) => (
+                  <div key={order.id} 
+                    className="border rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                  >
+                    <div className="p-2 sm:p-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+                          }`} />
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm sm:text-base">{order.userName}</span>
+                              <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                                #{order.id.slice(-6)}
+                              </span>
+                            </div>
+                            <div className="text-xs sm:text-sm text-gray-500 mt-1">
+                              {order.items.length} items • ₹{order.totalAmount}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            order.paymentMethod === 'COD' 
+                              ? 'bg-yellow-100 text-yellow-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {order.paymentMethod}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`tel:${order.userPhone}`);
+                            }}
+                            className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded-full"
+                          >
+                            <Phone className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded View - Better mobile layout */}
+                    {expandedOrderId === order.id && (
+                      <div className="border-t p-2 sm:p-3 bg-gray-50">
+                        <div className="space-y-3">
+                          {/* Customer Details */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                              <div className="bg-white p-2 rounded text-sm">
+                                <p>{order.userName}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <p>Phone: {order.userPhone}</p>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.open(`tel:${order.userPhone}`);
+                                    }}
+                                    className="text-blue-500"
+                                  >
+                                    <Phone className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                              <div className="bg-white p-2 rounded text-sm">
+                                <p>{order.address.street}</p>
+                                <p>{order.address.city}, {order.address.pincode}</p>
+                                {order.address.landmark && (
+                                  <p className="text-gray-500 mt-1">
+                                    Landmark: {order.address.landmark}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Order Items */}
+                          <div>
+                            <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                            <div className="bg-white rounded p-2 space-y-1.5">
+                              {order.items.map((item) => (
+                                <div key={item.id} className="flex justify-between text-sm">
+                                  <span>{item.name} × {item.quantity}</span>
+                                  <span>₹{item.price * item.quantity}</span>
+                                </div>
+                              ))}
+                              <div className="border-t pt-2 mt-2">
+                                <div className="flex justify-between text-sm font-medium">
+                                  <span>Total Amount</span>
+                                  <span>₹{order.totalAmount}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex gap-2">
+                            {order.status !== 'completed' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateOrderStatus(order.id, 'completed');
+                                }}
+                                className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600"
+                              >
+                                Mark as Completed
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`tel:${order.userPhone}`);
+                              }}
+                              className="flex-1 bg-blue-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-blue-600"
+                            >
+                              Call Customer
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showCompletedOrders && (
+            <div className="bg-white rounded-lg shadow-md p-3 mb-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Today's Orders</h3>
-              <span className="text-sm text-gray-600">Total: {todayOrders.length}</span>
+                <h3 className="text-lg font-semibold">Completed Orders</h3>
+                <span className="text-sm text-gray-600">Total: {completedOrders.length}</span>
             </div>
             <div className="space-y-3 max-h-[70vh] overflow-y-auto">
-              {todayOrders.map((order, index) => (
+                {completedOrders.map((order, index) => (
                 <div key={order.id} 
                   className="border rounded-lg hover:bg-gray-50 transition-colors"
                   onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
@@ -1386,22 +1662,22 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Menu Management Section - Mobile Optimized */}
-        <div className="bg-white rounded-lg shadow-md p-3 mt-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Menu Items ({filteredMenuItems.length})</h2>
+          {/* Menu Management Section */}
+          <div className="bg-white rounded-lg shadow-md p-2 sm:p-4">
+            <div className="flex flex-col gap-2 sm:gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h2 className="text-base sm:text-lg font-semibold">Menu Items ({filteredMenuItems.length})</h2>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleResetAllAvailability}
                   disabled={isLoading}
-                  className="p-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 text-sm"
+                    className="flex-1 sm:flex-none px-3 py-1.5 bg-green-500 text-white text-xs sm:text-sm rounded-md hover:bg-green-600 disabled:opacity-50"
                 >
                   Reset All
                 </button>
                 <button
                   onClick={() => setIsAddingItem(true)}
-                  className="p-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm"
+                    className="flex-1 sm:flex-none px-3 py-1.5 bg-red-500 text-white text-xs sm:text-sm rounded-md hover:bg-red-600"
                 >
                   Add Item
                 </button>
@@ -1413,78 +1689,26 @@ const Dashboard = () => {
               placeholder="Search items..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-md"
+                className="w-full px-3 py-2 text-xs sm:text-sm border rounded-md"
             />
           </div>
 
-          <div className="mt-4 space-y-2">
-            {filteredMenuItems
-              .slice(0, showAllItems ? undefined : ITEMS_PER_PAGE)
-              .map((item) => (
-                <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 border rounded-md hover:bg-gray-50">
-                  <div className="flex items-center gap-3">
-                    <img
-                      className="h-12 w-12 rounded-lg object-cover"
-                      src={item.image}
-                      alt={item.name}
-                    />
-                    <div>
-                      <div className="font-medium">{item.name}</div>
-                      <div className="text-sm text-gray-500">₹{item.price} • {item.category}</div>
-                      <div className="text-sm">
-                        {item.isAvailable ? (
-                          <span className="text-green-600">Available</span>
-                        ) : (
-                          <span className="text-red-600">Unavailable</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 mt-2 sm:mt-0">
-                    <button
-                      onClick={() => setEditingItem(item)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleToggleAvailability(item)}
-                      className={`p-2 rounded ${
-                        item.isAvailable 
-                          ? 'text-green-600 hover:bg-green-50' 
-                          : 'text-red-600 hover:bg-red-50'
-                      }`}
-                    >
-                      {item.isAvailable ? (
-                        <CheckCircle className="h-4 w-4" />
-                      ) : (
-                        <XCircle className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
+              {renderMenuItems()}
           </div>
 
           {filteredMenuItems.length > ITEMS_PER_PAGE && (
             <button
               onClick={() => setShowAllItems(!showAllItems)}
-              className="mt-4 w-full py-2 text-sm text-red-500 hover:bg-red-50 rounded-md"
+                className="mt-3 sm:mt-4 w-full py-2 text-xs sm:text-sm text-red-500 hover:bg-red-50 rounded-md"
             >
               {showAllItems ? (
                 <span className="flex items-center justify-center">
-                  Show Less <ChevronUp className="ml-1 h-4 w-4" />
+                    Show Less <ChevronUp className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </span>
               ) : (
                 <span className="flex items-center justify-center">
-                  Show More ({filteredMenuItems.length - ITEMS_PER_PAGE} items) <ChevronDown className="ml-1 h-4 w-4" />
+                    Show More ({filteredMenuItems.length - ITEMS_PER_PAGE} items) <ChevronDown className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </span>
               )}
             </button>
@@ -1492,13 +1716,13 @@ const Dashboard = () => {
 
           {/* Add/Edit Item Modal */}
           {(isAddingItem || editingItem) && (
-            <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center">
-              <div className="bg-white rounded-lg p-4 w-full max-w-md mx-4">
-                <h3 className="text-lg font-semibold mb-4">
+              <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg p-3 sm:p-4 w-full max-w-md mx-2 sm:mx-4">
+                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">
                   {editingItem ? 'Edit Item' : 'Add New Item'}
                 </h3>
                 
-                <div className="space-y-3">
+                  <div className="space-y-2 sm:space-y-3">
                   <input
                     type="text"
                     placeholder="Item name"
@@ -1507,7 +1731,7 @@ const Dashboard = () => {
                       ? setEditingItem({ ...editingItem, name: e.target.value })
                       : setNewItem({ ...newItem, name: e.target.value })
                     }
-                    className="w-full px-3 py-1.5 text-sm border rounded-md"
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md"
                   />
                   
                   <div className="flex gap-2">
@@ -1519,7 +1743,7 @@ const Dashboard = () => {
                         ? setEditingItem({ ...editingItem, price: Number(e.target.value) })
                         : setNewItem({ ...newItem, price: Number(e.target.value) })
                       }
-                      className="w-1/2 px-3 py-1.5 text-sm border rounded-md"
+                        className="w-1/2 px-3 py-1.5 text-xs sm:text-sm border rounded-md"
                     />
                     
                     <input
@@ -1530,7 +1754,7 @@ const Dashboard = () => {
                         ? setEditingItem({ ...editingItem, category: e.target.value })
                         : setNewItem({ ...newItem, category: e.target.value })
                       }
-                      className="w-1/2 px-3 py-1.5 text-sm border rounded-md"
+                        className="w-1/2 px-3 py-1.5 text-xs sm:text-sm border rounded-md"
                     />
                   </div>
                   
@@ -1542,7 +1766,7 @@ const Dashboard = () => {
                       ? setEditingItem({ ...editingItem, image: e.target.value })
                       : setNewItem({ ...newItem, image: e.target.value })
                     }
-                    className="w-full px-3 py-1.5 text-sm border rounded-md"
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md"
                   />
                   
                   <textarea
@@ -1552,23 +1776,23 @@ const Dashboard = () => {
                       ? setEditingItem({ ...editingItem, description: e.target.value })
                       : setNewItem({ ...newItem, description: e.target.value })
                     }
-                    className="w-full px-3 py-1.5 text-sm border rounded-md h-20"
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md h-16 sm:h-20"
                   />
                 </div>
 
-                <div className="flex justify-end gap-2 mt-4">
+                  <div className="flex justify-end gap-2 mt-3 sm:mt-4">
                   <button
                     onClick={() => {
                       setIsAddingItem(false);
                       setEditingItem(null);
                     }}
-                    className="px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50"
+                      className="px-3 py-1.5 text-xs sm:text-sm border rounded-md hover:bg-gray-50"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={editingItem ? handleUpdateItem : handleAddItem}
-                    className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
+                      onClick={handleItemSubmit}
+                      className="px-3 py-1.5 text-xs sm:text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
                   >
                     {editingItem ? 'Update' : 'Add'}
                   </button>
@@ -1916,11 +2140,10 @@ const Dashboard = () => {
                       Cancel
                     </button>
                     <button
-                      onClick={editingOffer ? handleUpdateOffer : handleAddOffer}
-                      disabled={!(editingOffer?.menuItemId || newOffer.menuItemId)}
+                        onClick={handleOfferSubmit}
                       className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {editingOffer ? 'Update' : 'Add'} Offer
+                        {editingOffer ? 'Update Offer' : 'Add Offer'}
                     </button>
                   </div>
                 </div>
@@ -1964,9 +2187,9 @@ const Dashboard = () => {
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
-};
+};export default Dashboard;
 
-export default Dashboard;

@@ -12,20 +12,40 @@ import { collection, addDoc, serverTimestamp, writeBatch, increment } from 'fire
 import { db } from '../config/firebase';
 import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 
+interface RestaurantStatus {
+  isOpen: boolean;
+  lastUpdated: any; // You can use a more specific type if needed
+}
+
+interface User {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  isVeg?: boolean;
+  image?: string;
+}
+
 const DELIVERY_FEE = {
   ONLINE: 0,
   COD: 40
 };
-<<<<<<< HEAD
-=======
 
-const GST_PERCENTAGE = {
+const GST_RATES = {
   CGST: 2.50,
   SGST: 2.50
 };
->>>>>>> parent of 81d0989 (update)
 
-const GST_PERCENTAGE = 2; // 2% GST
+const DISCOUNT_PERCENTAGE = 5;
+
+const TOTAL_GST_PERCENTAGE = 5; // Total GST percentage (2.5% CGST + 2.5% SGST)
 
 // Update delivery fee logic
 const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD') => {
@@ -35,14 +55,22 @@ const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD')
   return 40; // ₹40 delivery fee for orders below ₹500
 };
 
-// Calculate GST amount
+// Calculate GST amounts separately
 const calculateGST = (amount: number) => {
-  return Math.round((amount * GST_PERCENTAGE) / 100);
+  return {
+    CGST: Math.round((amount * GST_RATES.CGST) / 100),
+    SGST: Math.round((amount * GST_RATES.SGST) / 100)
+  };
+};
+
+// Calculate discount amount
+const calculateDiscount = (amount: number) => {
+  return Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
 };
 
 const Cart = () => {
   const { items, updateQuantity, removeFromCart, totalAmount, totalItems, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user } = useAuth() as { user: User | null };
   const navigate = useNavigate();
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'ONLINE' | 'COD'>('ONLINE');
@@ -145,7 +173,7 @@ const Cart = () => {
         name: RAZORPAY_CONFIG.name,
         description: `Order #${orderId}`,
         prefill: {
-          name: user?.displayName || '',
+          name: user?.name || '',
           email: user?.email || '',
           contact: user?.phone || ''
         },
@@ -200,11 +228,13 @@ const Cart = () => {
     }
   };
 
-  // Calculate all amounts including GST
+  // Calculate all amounts including GST and discount
   const subtotal = totalAmount;
-  const gstAmount = calculateGST(subtotal);
+  const gstAmounts = calculateGST(subtotal);
+  const totalGST = gstAmounts.CGST + gstAmounts.SGST;
+  const discountAmount = calculateDiscount(subtotal);
   const deliveryFee = calculateDeliveryFee(subtotal, paymentMethod);
-  const finalAmount = subtotal + gstAmount + deliveryFee;
+  const finalAmount = subtotal + totalGST - discountAmount + deliveryFee;
 
   // Modify handleCheckout function
   const handleCheckout = async () => {
@@ -239,8 +269,8 @@ const Cart = () => {
         userId: user.id,
         items: items,
         subtotal: subtotal,
-        gstAmount: gstAmount,
-        gstPercentage: GST_PERCENTAGE,
+        gstAmount: totalGST,
+        gstPercentage: TOTAL_GST_PERCENTAGE,
         deliveryFee: deliveryFee,
         finalAmount: finalAmount,
         address: address,
@@ -295,19 +325,19 @@ const Cart = () => {
 
       // Create order document
       const orderData = {
-        userId: user.uid,
+        userId: user.id,
         items: items.map(item => ({
           id: item.id,
           name: item.name,
           price: item.price,
           quantity: item.quantity,
-          isVeg: item.isVeg
+          isVeg: item.isVeg || false // Add default value for isVeg
         })),
         totalAmount: totalAmount,
         status: 'pending',
         createdAt: serverTimestamp(),
-        userName: user.displayName || 'Guest',
-        userPhone: user.phoneNumber || '',
+        userName: user.name || 'Guest',
+        userPhone: user.phone || '',
         address: {
           street: '',
           city: '',
@@ -572,10 +602,22 @@ const Cart = () => {
                     <dd className="text-xs md:text-sm font-medium text-gray-900">₹{subtotal}</dd>
                   </div>
                   
-                  {/* GST Section */}
+                  {/* CGST Section */}
                   <div className="py-2 md:py-4 flex items-center justify-between">
-                    <dt className="text-xs md:text-sm text-gray-600">GST ({GST_PERCENTAGE}%)</dt>
-                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{gstAmount}</dd>
+                    <dt className="text-xs md:text-sm text-gray-600">CGST ({GST_RATES.CGST}%)</dt>
+                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{gstAmounts.CGST}</dd>
+                  </div>
+
+                  {/* SGST Section */}
+                  <div className="py-2 md:py-4 flex items-center justify-between">
+                    <dt className="text-xs md:text-sm text-gray-600">SGST ({GST_RATES.SGST}%)</dt>
+                    <dd className="text-xs md:text-sm font-medium text-gray-900">₹{gstAmounts.SGST}</dd>
+                  </div>
+
+                  {/* Discount Section */}
+                  <div className="py-2 md:py-4 flex items-center justify-between">
+                    <dt className="text-xs md:text-sm text-green-600">Discount ({DISCOUNT_PERCENTAGE}%)</dt>
+                    <dd className="text-xs md:text-sm font-medium text-green-600">-₹{discountAmount}</dd>
                   </div>
                   
                   {/* Delivery Fee Section with Info */}

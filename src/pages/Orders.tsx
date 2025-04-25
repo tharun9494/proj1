@@ -52,8 +52,7 @@ const Orders = () => {
     // Create query for user's orders
     const ordersQuery = query(
       collection(db, 'orders'),
-      where('userId', '==', user.id),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', user.id)
     );
 
     // Set up real-time listener
@@ -64,7 +63,15 @@ const Orders = () => {
           id: doc.id,
           ...doc.data()
         })) as Order[];
-        setOrders(userOrders);
+        
+        // Sort orders by createdAt in memory
+        const sortedOrders = userOrders.sort((a, b) => {
+          const dateA = a.createdAt?.toDate?.() || new Date(0);
+          const dateB = b.createdAt?.toDate?.() || new Date(0);
+          return dateB.getTime() - dateA.getTime();
+        });
+        
+        setOrders(sortedOrders);
         setLoading(false);
         setError(null);
       },
