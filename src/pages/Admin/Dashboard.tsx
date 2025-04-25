@@ -51,35 +51,24 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import toast from 'react-hot-toast';
-import { initializeOrderNotifications } from '../../services/phoneService';
-import { ADMIN_CONFIG } from '../../config/adminConfig';
 
 interface MenuItem {
   id: string;
   name: string;
-  description: string;
   price: number;
+  description: string;
   category: string;
   image: string;
-  quantity: number;
-  isAvailable?: boolean;
   createdAt?: Date;
-}
-
-interface DeliveryTime {
-  date: string;
-  time: string;
+  isAvailable?: boolean;
 }
 
 interface Order {
   id: string;
-  items: MenuItem[];
-  total: number;
-  totalAmount: number;
   status: 'pending' | 'completed';
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
+  totalAmount: number;
+  items: MenuItem[];
+  createdAt: any;
   userName: string;
   userPhone: string;
   alternativePhone?: string;
@@ -89,8 +78,6 @@ interface Order {
     pincode: string;
     landmark?: string;
   };
-  deliveryTime: DeliveryTime | "N/A";
-  createdAt: any;
   paymentStatus: 'success' | 'pending' | 'failed';
   paymentMethod: 'ONLINE' | 'COD';
 }
@@ -125,15 +112,6 @@ interface Offer {
   menuItemId: string;
   menuItemName: string;
   originalPrice: number;
-}
-
-interface DeliveryTimeObject {
-  time: string;
-  date: string;
-}
-
-function isDeliveryTimeObject(value: any): value is DeliveryTimeObject {
-  return value !== "N/A" && typeof value === "object" && "time" in value && "date" in value;
 }
 
 const Dashboard = () => {
@@ -336,27 +314,32 @@ const Dashboard = () => {
         position: 'top-center',
         icon: '🔔'
       });
-
-      // Only play sound if tab is visible, has focus, and sound is enabled
-      if (document.visibilityState === 'visible' && document.hasFocus() && isSoundEnabled) {
-        if (audioRef.current) {
-          audioRef.current.currentTime = 0; // Reset to start
-          audioRef.current.play().catch(error => {
-            console.error('Error playing notification sound:', error);
-            // If the error is due to user interaction, show a message
-            if (error.name === 'NotAllowedError') {
-              toast('Please interact with the page to enable sound notifications', {
-                duration: 3000,
-                position: 'top-center',
-                icon: '🔊'
-              });
-            }
-          });
-        }
-      }
     }
     previousOrdersCountRef.current = todayOrders.length;
-  }, [todayOrders.length, isSoundEnabled]);
+  }, [todayOrders.length]);
+
+  useEffect(() => {
+    // Request notification permission when admin dashboard loads
+    if (Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    // Initialize notifications
+    const unsubscribePromise = initializeOrderNotifications();
+    
+    return () => {
+      // Cleanup function
+      unsubscribePromise.then(unsubscribe => {
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      });
+    };
+  }, [isAdmin]);
 
   const handlePopulateMenu = async () => {
     if (!isAdmin) {
@@ -978,19 +961,6 @@ const Dashboard = () => {
                         Call Customer
                       </button>
                     </div>
-
-                    {isDeliveryTimeObject(order.deliveryTime) ? (
-                      <div className="flex flex-col gap-2">
-                        <p className="text-sm text-gray-500">Delivery Time</p>
-                        <p className="text-sm">{order.deliveryTime.time}</p>
-                      </div>
-                    ) : null}
-                    {isDeliveryTimeObject(order.deliveryTime) ? (
-                      <div className="flex flex-col gap-2">
-                        <p className="text-sm text-gray-500">Delivery Date</p>
-                        <p className="text-sm">{order.deliveryTime.date}</p>
-                      </div>
-                    ) : null}
                   </div>
                 )}
               </div>
@@ -1519,7 +1489,481 @@ const Dashboard = () => {
               )}
             </button>
           )}
+
+          {/* Add/Edit Item Modal */}
+          {(isAddingItem || editingItem) && (
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="bg-white rounded-lg p-4 w-full max-w-md mx-4">
+                <h3 className="text-lg font-semibold mb-4">
+                  {editingItem ? 'Edit Item' : 'Add New Item'}
+                </h3>
+                
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Item name"
+                    value={editingItem ? editingItem.name : newItem.name}
+                    onChange={(e) => editingItem 
+                      ? setEditingItem({ ...editingItem, name: e.target.value })
+                      : setNewItem({ ...newItem, name: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 text-sm border rounded-md"
+                  />
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Price"
+                      value={editingItem ? editingItem.price : newItem.price}
+                      onChange={(e) => editingItem
+                        ? setEditingItem({ ...editingItem, price: Number(e.target.value) })
+                        : setNewItem({ ...newItem, price: Number(e.target.value) })
+                      }
+                      className="w-1/2 px-3 py-1.5 text-sm border rounded-md"
+                    />
+                    
+                    <input
+                      type="text"
+                      placeholder="Category"
+                      value={editingItem ? editingItem.category : newItem.category}
+                      onChange={(e) => editingItem
+                        ? setEditingItem({ ...editingItem, category: e.target.value })
+                        : setNewItem({ ...newItem, category: e.target.value })
+                      }
+                      className="w-1/2 px-3 py-1.5 text-sm border rounded-md"
+                    />
+                  </div>
+                  
+                  <input
+                    type="text"
+                    placeholder="Image URL"
+                    value={editingItem ? editingItem.image : newItem.image}
+                    onChange={(e) => editingItem
+                      ? setEditingItem({ ...editingItem, image: e.target.value })
+                      : setNewItem({ ...newItem, image: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 text-sm border rounded-md"
+                  />
+                  
+                  <textarea
+                    placeholder="Description"
+                    value={editingItem ? editingItem.description : newItem.description}
+                    onChange={(e) => editingItem
+                      ? setEditingItem({ ...editingItem, description: e.target.value })
+                      : setNewItem({ ...newItem, description: e.target.value })
+                    }
+                    className="w-full px-3 py-1.5 text-sm border rounded-md h-20"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    onClick={() => {
+                      setIsAddingItem(false);
+                      setEditingItem(null);
+                    }}
+                    className="px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={editingItem ? handleUpdateItem : handleAddItem}
+                    className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
+                  >
+                    {editingItem ? 'Update' : 'Add'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Category Availability Controls */}
+        <div className="mb-8 bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Category Availability</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {categories.map(category => (
+              <div key={category} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <span className="font-medium text-gray-700">{category}</span>
+                <button
+                  onClick={() => toggleCategoryAvailability(category)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
+                    categoryAvailability[category] ? 'bg-green-500' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      categoryAvailability[category] ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Messages Section - Better mobile layout */}
+        {showMessages && (
+          <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mt-6 md:mt-8">
+            <h3 className="text-lg md:text-xl font-semibold mb-4">Contact Messages</h3>
+            {messages.length === 0 ? (
+              <p className="text-gray-500 text-sm md:text-base">No messages found</p>
+            ) : (
+              <div className="space-y-3 md:space-y-4">
+                {messages.map((message) => (
+                  <div 
+                    key={message.id} 
+                    className={`border rounded-lg p-3 md:p-4 ${
+                      message.status === 'unread' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2 md:gap-0 mb-2">
+                      <div>
+                        <h4 className="font-semibold text-sm md:text-base">{message.name}</h4>
+                        <p className="text-xs md:text-sm text-gray-600">{message.email}</p>
+                        <p className="text-xs md:text-sm text-gray-600">{message.phone}</p>
+                      </div>
+                      <div className="text-left md:text-right">
+                        <p className="font-semibold text-sm md:text-base">{message.subject}</p>
+                        <p className="text-xs text-gray-500">
+                          {message.createdAt?.toDate().toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-xs md:text-sm text-gray-600 mb-2 p-2 md:p-3 bg-gray-50 rounded">
+                      {message.message}
+                    </div>
+                    {message.status === 'unread' && (
+                      <button
+                        onClick={() => handleMarkMessageAsRead(message.id)}
+                        className="text-xs md:text-sm bg-yellow-500 text-white py-1 px-2 md:px-3 rounded-md hover:bg-yellow-600"
+                      >
+                        Mark as Read
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Offers Section */}
+        <div className="bg-white rounded-lg shadow-md p-6 mt-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <h2 className="text-xl font-semibold">Manage Offers</h2>
+            <button
+              onClick={() => setIsAddingOffer(true)}
+              className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add New Offer
+            </button>
+          </div>
+
+          {/* Offers List */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {offers.map((offer) => (
+              <div key={offer.id} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                {/* Offer Image */}
+                <div className="relative h-48 w-full">
+                  {offer.image ? (
+                    <img
+                      src={offer.image}
+                      alt={offer.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                      <Package className="h-12 w-12 text-gray-400" />
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2">
+                    <button
+                      onClick={() => handleToggleOfferStatus(offer.id, offer.isActive)}
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        offer.isActive ? 'bg-green-500' : 'bg-gray-500'
+                      } text-white`}
+                    >
+                      {offer.isActive ? 'Active' : 'Inactive'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Offer Content */}
+                <div className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-semibold text-lg">{offer.title}</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditingOffer(offer)}
+                        className="text-blue-500 hover:text-blue-600"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteOffer(offer.id)}
+                        className="text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <p className="text-gray-600 text-sm mb-3">{offer.description}</p>
+                  
+                  <div className="flex items-center gap-2 mb-2">
+                    {offer.type === 'discount' && (
+                      <span className="bg-red-100 text-red-600 px-2 py-1 rounded-full text-xs font-medium">
+                        {offer.discountPercentage}% OFF
+                      </span>
+                    )}
+                    {offer.type === 'buy_one_get_one' && (
+                      <span className="bg-green-100 text-green-600 px-2 py-1 rounded-full text-xs font-medium">
+                        Buy One Get One
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Calendar className="h-4 w-4" />
+                    <span>Valid until: {offer.validUntil.toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Add/Edit Offer Modal */}
+          {(isAddingOffer || editingOffer) && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold">
+                    {editingOffer ? 'Edit Offer' : 'Add New Offer'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setIsAddingOffer(false);
+                      setEditingOffer(null);
+                    }}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    <XCircle className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Menu Item Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Menu Item</label>
+                    <select
+                      value={editingOffer ? editingOffer.menuItemId : newOffer.menuItemId}
+                      onChange={(e) => {
+                        const selectedItem = menuItems.find(item => item.id === e.target.value);
+                        if (selectedItem) {
+                          const updatedOffer = {
+                            ...(editingOffer || newOffer),
+                            menuItemId: selectedItem.id,
+                            menuItemName: selectedItem.name,
+                            originalPrice: selectedItem.price,
+                            image: selectedItem.image,
+                            title: `${selectedItem.name} Offer`, // Auto-generate offer title
+                          };
+                          editingOffer 
+                            ? setEditingOffer(updatedOffer as Offer)
+                            : setNewOffer(updatedOffer);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    >
+                      <option value="">Select a menu item</option>
+                      {menuItems.map(item => (
+                        <option key={item.id} value={item.id}>
+                          {item.name} - ₹{item.price}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                    <input
+                      type="text"
+                      value={editingOffer ? editingOffer.title : newOffer.title}
+                      onChange={(e) => editingOffer
+                        ? setEditingOffer({ ...editingOffer, title: e.target.value })
+                        : setNewOffer({ ...newOffer, title: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      placeholder="Enter offer title"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea
+                      value={editingOffer ? editingOffer.description : newOffer.description}
+                      onChange={(e) => editingOffer
+                        ? setEditingOffer({ ...editingOffer, description: e.target.value })
+                        : setNewOffer({ ...newOffer, description: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      rows={3}
+                      placeholder="Enter offer description"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Offer Type</label>
+                    <select
+                      value={editingOffer ? editingOffer.type : newOffer.type}
+                      onChange={(e) => {
+                        const type = e.target.value as 'discount' | 'buy_one_get_one';
+                        const currentOffer = editingOffer || newOffer;
+                        const updatedOffer = {
+                          ...currentOffer,
+                          type,
+                          offerPrice: type === 'discount' 
+                            ? currentOffer.originalPrice * (1 - (currentOffer.discountPercentage / 100))
+                            : currentOffer.originalPrice
+                        };
+                        editingOffer 
+                          ? setEditingOffer(updatedOffer as Offer)
+                          : setNewOffer(updatedOffer);
+                      }}
+                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    >
+                      <option value="discount">Discount</option>
+                      <option value="buy_one_get_one">Buy One Get One</option>
+                    </select>
+                  </div>
+
+                  {(editingOffer ? editingOffer.type : newOffer.type) === 'discount' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Discount Percentage</label>
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="number"
+                          value={editingOffer ? editingOffer.discountPercentage : newOffer.discountPercentage}
+                          onChange={(e) => {
+                            const percentage = Number(e.target.value);
+                            const currentOffer = editingOffer || newOffer;
+                            const updatedOffer = {
+                              ...currentOffer,
+                              discountPercentage: percentage,
+                              offerPrice: currentOffer.originalPrice * (1 - (percentage / 100))
+                            };
+                            editingOffer 
+                              ? setEditingOffer(updatedOffer as Offer)
+                              : setNewOffer(updatedOffer);
+                          }}
+                          className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="Enter discount percentage"
+                          min="0"
+                          max="100"
+                        />
+                        <div className="text-sm text-gray-500">
+                          <p>Original: ₹{editingOffer ? editingOffer.originalPrice : newOffer.originalPrice}</p>
+                          <p>Offer: ₹{editingOffer ? editingOffer.offerPrice : newOffer.offerPrice}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until</label>
+                    <input
+                      type="datetime-local"
+                      value={(editingOffer ? editingOffer.validUntil : newOffer.validUntil)
+                        .toISOString()
+                        .slice(0, 16)}
+                      onChange={(e) => editingOffer
+                        ? setEditingOffer({ ...editingOffer, validUntil: new Date(e.target.value) })
+                        : setNewOffer({ ...newOffer, validUntil: new Date(e.target.value) })
+                      }
+                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+
+                  {/* Preview Section */}
+                  {(editingOffer?.menuItemId || newOffer.menuItemId) && (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <h4 className="font-medium mb-2">Preview</h4>
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={editingOffer?.image || newOffer.image}
+                          alt="Menu item"
+                          className="w-20 h-20 object-cover rounded-lg"
+                        />
+                        <div>
+                          <p className="font-medium">{editingOffer?.menuItemName || newOffer.menuItemName}</p>
+                          <p className="text-sm text-gray-500">Original Price: ₹{editingOffer?.originalPrice || newOffer.originalPrice}</p>
+                          <p className="text-sm text-green-600">Offer Price: ₹{editingOffer?.offerPrice || newOffer.offerPrice}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3 pt-4">
+                    <button
+                      onClick={() => {
+                        setIsAddingOffer(false);
+                        setEditingOffer(null);
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={editingOffer ? handleUpdateOffer : handleAddOffer}
+                      disabled={!(editingOffer?.menuItemId || newOffer.menuItemId)}
+                      className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {editingOffer ? 'Update' : 'Add'} Offer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* New Order Notification */}
+        {newOrderNotification.show && newOrderNotification.order && (
+          <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg border border-red-200 animate-bounce">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-red-600">New Order Received!</h3>
+                <p className="text-sm text-gray-600">
+                  Order ID: {newOrderNotification.order.id}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Amount: ₹{newOrderNotification.order.totalAmount}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Payment: {newOrderNotification.order.paymentMethod}
+                </p>
+              </div>
+              <div className="flex flex-col items-center ml-4">
+                <a
+                  href={`tel:${newOrderNotification.order.userPhone}`}
+                  className="bg-green-500 text-white p-2 rounded-full hover:bg-green-600"
+                  title="Call Customer"
+                >
+                  <Phone size={20} />
+                </a>
+                <span className="text-xs text-gray-500 mt-1">Call</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setNewOrderNotification({ show: false, order: null })}
+              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
