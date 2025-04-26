@@ -494,147 +494,97 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Fix orders listener and stats calculation
-  const setupOrdersListener = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Get orders from the last month to ensure we have enough data for comparisons
-    const lastMonth = new Date(today);
-    lastMonth.setMonth(lastMonth.getMonth() - 1);
-
-    console.log('Setting up orders listener with date range:', {
-      from: lastMonth.toISOString(),
-      to: today.toISOString()
-    });
-
-    // Function to calculate total amount from order items
-    const calculateOrderTotal = (items: OrderItem[]): number => {
-      return items.reduce((total, item) => {
-        return total + (item.price * item.quantity);
-      }, 0);
-    };
-
-    // Function to update order with missing total amount
-    const updateOrderWithTotal = async (orderId: string, items: OrderItem[]) => {
-      try {
-        const total = calculateOrderTotal(items);
-        const orderRef = doc(db, 'orders', orderId);
-        await updateDoc(orderRef, {
-          totalAmount: total
-        });
-        console.log('Updated order total:', { orderId, total });
-      } catch (error) {
-        console.error('Error updating order total:', error);
-      }
-    };
-
-    const ordersQuery = query(
-      collection(db, 'orders'),
-      where('createdAt', '>=', lastMonth),
-      orderBy('createdAt', 'desc')
+  // Update the useEffect for total orders calculation
+  useEffect(() => {
+    // Combine orders and remove duplicates
+    const allOrders = [...orders.today, ...orders.completed].filter((order, index, self) =>
+      index === self.findIndex((o) => o.id === order.id)
     );
+    
+    setTotalOrders(allOrders.length);
+  }, [orders.today, orders.completed]);
 
-    return onSnapshot(ordersQuery, (snapshot) => {
-      try {
-        const allOrders = snapshot.docs.map(doc => {
-          const data = doc.data();
-          // Check if total amount is missing but we have items
-          if (data.items && (!data.totalAmount || data.totalAmount === 0)) {
-            updateOrderWithTotal(doc.id, data.items);
-            // Calculate total for immediate use
-            data.totalAmount = calculateOrderTotal(data.items);
-          }
-          
-          console.log('Processing order:', {
-            id: doc.id,
-            totalAmount: data.totalAmount,
-            itemsTotal: data.items ? calculateOrderTotal(data.items) : 0,
-            status: data.status,
-            paymentMethod: data.paymentMethod,
-            paymentStatus: data.paymentStatus,
-            createdAt: data.createdAt?.toDate()?.toISOString()
+  // Update the setupOrdersListener function
+  const setupOrdersListener = useCallback(() => {
+    try {
+      // Get the current date
+      const now = new Date();
+      
+      // Set the start of the day to 12 AM (midnight)
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      
+      // Set the end of the day to 11:59:59 PM
+      const todayEnd = new Date(now);
+      todayEnd.setHours(23, 59, 59, 999);
+
+      // Query for today's orders
+      const todayOrdersQuery = query(
+        collection(db, 'orders'),
+        where('createdAt', '>=', todayStart),
+        where('createdAt', '<=', todayEnd),
+        orderBy('createdAt', 'desc')
+      );
+
+      // Query for completed orders
+      const completedOrdersQuery = query(
+        collection(db, 'orders'),
+        where('status', '==', 'completed'),
+        orderBy('createdAt', 'desc')
+      );
+
+      // Listen for today's orders
+      const unsubToday = onSnapshot(todayOrdersQuery, (snapshot) => {
+        const todayOrdersList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Order[];
+
+        setOrders(prev => ({
+          ...prev,
+          today: todayOrdersList
+        }));
+
+        // Check for new orders
+        if (todayOrdersList.length > previousOrdersCountRef.current) {
+          // Show notification for new orders
+          toast.success('New order received!', {
+            duration: 3000,
+            position: 'top-right'
           });
-          
-          return {
-            id: doc.id,
-            ...data
-          };
-        }) as Order[];
+        }
+        previousOrdersCountRef.current = todayOrdersList.length;
+      }, (error) => {
+        console.error('Error fetching today\'s orders:', error);
+        toast.error('Failed to load today\'s orders');
+      });
 
-        console.log('Total orders fetched:', allOrders.length);
+      // Listen for completed orders
+      const unsubCompleted = onSnapshot(completedOrdersQuery, (snapshot) => {
+        const completedOrdersList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Order[];
 
-        // Filter today's orders
-        const todayOrdersList = allOrders.filter(order => {
-          if (!order.createdAt) {
-            console.log('Order missing createdAt:', order.id);
-            return false;
-          }
-          const orderDate = order.createdAt.toDate();
-          const isValid = (
-            orderDate >= today && 
-            order.status !== 'completed' && 
-            ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-             order.paymentMethod === 'COD')
-          );
-          console.log('Today order check:', {
-            orderId: order.id,
-            date: orderDate.toISOString(),
-            isValid,
-            status: order.status,
-            paymentMethod: order.paymentMethod,
-            paymentStatus: order.paymentStatus
-          });
-          return isValid;
-        });
+        setOrders(prev => ({
+          ...prev,
+          completed: completedOrdersList
+        }));
+      }, (error) => {
+        console.error('Error fetching completed orders:', error);
+        toast.error('Failed to load completed orders');
+      });
 
-        setOrders({ ...orders, today: todayOrdersList });
-        console.log('Today\'s orders count:', todayOrdersList.length);
-
-        // Filter completed orders
-        const completedOrdersList = allOrders.filter(order => {
-          const isValid = (
-            order.status === 'completed' &&
-            ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-             order.paymentMethod === 'COD')
-          );
-          console.log('Completed order check:', {
-            orderId: order.id,
-            isValid,
-            status: order.status,
-            paymentMethod: order.paymentMethod,
-            paymentStatus: order.paymentStatus,
-            amount: order.totalAmount
-          });
-          return isValid;
-        });
-
-        setOrders({ ...orders, completed: completedOrdersList });
-        console.log('Completed orders count:', completedOrdersList.length);
-
-        // Calculate total orders
-        const uniqueOrders = new Set([
-          ...todayOrdersList.map(order => order.id),
-          ...completedOrdersList.map(order => order.id)
-        ]);
-        setTotalOrders(uniqueOrders.size);
-
-        // Calculate revenue stats with all valid orders
-        const validOrders = allOrders.filter(order => 
-          order.createdAt && 
-          ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-           order.paymentMethod === 'COD')
-        );
-        
-        console.log('Valid orders for revenue calculation:', validOrders.length);
-        calculateRevenueStats(validOrders);
-
-      } catch (error) {
-        console.error('Error processing orders:', error);
-        toast.error('Failed to process orders data');
-      }
-    });
-  };
+      return () => {
+        unsubToday();
+        unsubCompleted();
+      };
+    } catch (error) {
+      console.error('Error setting up orders listener:', error);
+      toast.error('Failed to initialize orders listener');
+      return () => {};
+    }
+  }, []);
 
   // Calculate revenue statistics
   const calculateChange = (current: number, previous: number): number => {
@@ -676,9 +626,13 @@ const Dashboard = () => {
     let monthlyRevenue = 0;
     let lastMonthRevenue = 0;
 
+    // Create a Set to track processed order IDs
+    const processedOrderIds = new Set<string>();
+
     orders.forEach((order) => {
-      if (!order.createdAt || !order.totalAmount) return;
+      if (!order.createdAt || !order.totalAmount || processedOrderIds.has(order.id)) return;
       
+      processedOrderIds.add(order.id);
       const orderDate = order.createdAt.toDate();
       const amount = Number(order.totalAmount) || 0;
 
@@ -722,7 +676,11 @@ const Dashboard = () => {
 
   // Update revenue stats when orders change
   useEffect(() => {
-    const allOrders = [...orders.today, ...orders.completed];
+    // Combine orders and remove duplicates
+    const allOrders = [...orders.today, ...orders.completed].filter((order, index, self) =>
+      index === self.findIndex((o) => o.id === order.id)
+    );
+    
     if (allOrders.length > 0) {
       calculateRevenueStats(allOrders);
     }
@@ -1150,11 +1108,19 @@ const Dashboard = () => {
     </div>
   );
 
-  // Add back the renderTodayOrders function
-  const renderTodayOrders = () => {
+  // Update the renderTodayOrders function
+  const todayOrdersList = useMemo(() => {
     const sortedOrders = [...orders.today].sort((a, b) => 
       b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
     );
+
+    if (sortedOrders.length === 0) {
+      return (
+        <div className="mt-4 text-center py-8 bg-white rounded-lg shadow-sm">
+          <p className="text-gray-500">No orders for today</p>
+        </div>
+      );
+    }
 
     return (
       <div className="mt-4">
@@ -1168,10 +1134,11 @@ const Dashboard = () => {
           </button>
         </div>
         {showTodayOrders && (
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
             {sortedOrders.map((order, index) => (
               <div key={order.id} 
                 className="border rounded-lg hover:bg-gray-50 transition-colors"
+                onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
               >
                 <div className="p-2 sm:p-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1263,13 +1230,21 @@ const Dashboard = () => {
         )}
       </div>
     );
-  };
+  }, [orders.today, showTodayOrders, expandedOrderId]);
 
   // Add back the renderCompletedOrders function
-  const renderCompletedOrders = () => {
+  const completedOrdersList = useMemo(() => {
     const sortedOrders = [...orders.completed].sort((a, b) => 
       b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
     );
+
+    if (sortedOrders.length === 0) {
+      return (
+        <div className="mt-4 text-center py-8 bg-white rounded-lg shadow-sm">
+          <p className="text-gray-500">No completed orders</p>
+        </div>
+      );
+    }
 
     return (
       <div className="mt-4">
@@ -1283,10 +1258,11 @@ const Dashboard = () => {
           </button>
         </div>
         {showCompletedOrders && (
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
             {sortedOrders.map((order, index) => (
               <div key={order.id} 
                 className="border rounded-lg hover:bg-gray-50 transition-colors"
+                onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
               >
                 <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                   <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -1374,7 +1350,7 @@ const Dashboard = () => {
         )}
       </div>
     );
-  };
+  }, [orders.completed, showCompletedOrders, expandedOrderId]);
 
   if (isLoading) {
     return (
@@ -1640,8 +1616,8 @@ const Dashboard = () => {
             </div>
 
             {/* Orders Lists - Better mobile spacing */}
-            {showTodayOrders && renderTodayOrders()}
-            {showCompletedOrders && renderCompletedOrders()}
+            {showTodayOrders && todayOrdersList}
+            {showCompletedOrders && completedOrdersList}
 
             {/* Menu Management Section */}
             <div className="bg-white rounded-lg shadow-md p-2 sm:p-4">
