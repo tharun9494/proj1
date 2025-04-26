@@ -54,6 +54,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import toast from 'react-hot-toast';
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subDays, subWeeks, subMonths } from 'date-fns';
 
 interface MenuItem {
   id: string;
@@ -124,19 +125,16 @@ interface Offer {
 
 interface RevenueStats {
   daily: {
-    total: number;
+    amount: number;
     change: number;
-    trend: 'up' | 'down';
   };
   weekly: {
-    total: number;
+    amount: number;
     change: number;
-    trend: 'up' | 'down';
   };
   monthly: {
-    total: number;
+    amount: number;
     change: number;
-    trend: 'up' | 'down';
   };
 }
 
@@ -196,9 +194,9 @@ const Dashboard = () => {
   }>({ show: false, order: null });
   const [isSoundEnabled, setIsSoundEnabled] = useState(false);
   const [revenueStats, setRevenueStats] = useState<RevenueStats>({
-    daily: { total: 0, change: 0, trend: 'up' },
-    weekly: { total: 0, change: 0, trend: 'up' },
-    monthly: { total: 0, change: 0, trend: 'up' }
+    daily: { amount: 0, change: 0 },
+    weekly: { amount: 0, change: 0 },
+    monthly: { amount: 0, change: 0 }
   });
   const [totalOrders, setTotalOrders] = useState(0);
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -423,57 +421,135 @@ const Dashboard = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Get orders from the last month to ensure we have enough data for comparisons
+    const lastMonth = new Date(today);
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+
+    console.log('Setting up orders listener with date range:', {
+      from: lastMonth.toISOString(),
+      to: today.toISOString()
+    });
+
+    // Function to calculate total amount from order items
+    const calculateOrderTotal = (items: OrderItem[]): number => {
+      return items.reduce((total, item) => {
+        return total + (item.price * item.quantity);
+      }, 0);
+    };
+
+    // Function to update order with missing total amount
+    const updateOrderWithTotal = async (orderId: string, items: OrderItem[]) => {
+      try {
+        const total = calculateOrderTotal(items);
+        const orderRef = doc(db, 'orders', orderId);
+        await updateDoc(orderRef, {
+          totalAmount: total
+        });
+        console.log('Updated order total:', { orderId, total });
+      } catch (error) {
+        console.error('Error updating order total:', error);
+      }
+    };
+
     const ordersQuery = query(
       collection(db, 'orders'),
+      where('createdAt', '>=', lastMonth),
       orderBy('createdAt', 'desc')
     );
 
     return onSnapshot(ordersQuery, (snapshot) => {
       try {
-        const allOrders = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Order[];
+        const allOrders = snapshot.docs.map(doc => {
+          const data = doc.data();
+          // Check if total amount is missing but we have items
+          if (data.items && (!data.totalAmount || data.totalAmount === 0)) {
+            updateOrderWithTotal(doc.id, data.items);
+            // Calculate total for immediate use
+            data.totalAmount = calculateOrderTotal(data.items);
+          }
+          
+          console.log('Processing order:', {
+            id: doc.id,
+            totalAmount: data.totalAmount,
+            itemsTotal: data.items ? calculateOrderTotal(data.items) : 0,
+            status: data.status,
+            paymentMethod: data.paymentMethod,
+            paymentStatus: data.paymentStatus,
+            createdAt: data.createdAt?.toDate()?.toISOString()
+          });
+          
+          return {
+            id: doc.id,
+            ...data
+          };
+        }) as Order[];
+
+        console.log('Total orders fetched:', allOrders.length);
 
         // Filter today's orders
-        const todayOrdersList = allOrders
-          .filter(order => {
-            const orderDate = order.createdAt?.toDate();
-            if (!orderDate || orderDate < today) return false;
-
-            return (
-              order.status !== 'completed' && 
-              ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-              order.paymentMethod === 'COD')
-            );
-          })
-          .sort((a, b) => {
-            const dateA = a.createdAt?.toDate() || new Date();
-            const dateB = b.createdAt?.toDate() || new Date();
-            return dateB.getTime() - dateA.getTime();
+        const todayOrdersList = allOrders.filter(order => {
+          if (!order.createdAt) {
+            console.log('Order missing createdAt:', order.id);
+            return false;
+          }
+          const orderDate = order.createdAt.toDate();
+          const isValid = (
+            orderDate >= today && 
+            order.status !== 'completed' && 
+            ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+             order.paymentMethod === 'COD')
+          );
+          console.log('Today order check:', {
+            orderId: order.id,
+            date: orderDate.toISOString(),
+            isValid,
+            status: order.status,
+            paymentMethod: order.paymentMethod,
+            paymentStatus: order.paymentStatus
           });
+          return isValid;
+        });
 
         setTodayOrders(todayOrdersList);
+        console.log('Today\'s orders count:', todayOrdersList.length);
 
         // Filter completed orders
-        const completedOrdersList = allOrders
-          .filter(order => order.status === 'completed')
-          .sort((a, b) => {
-            const dateA = a.createdAt?.toDate() || new Date();
-            const dateB = b.createdAt?.toDate() || new Date();
-            return dateB.getTime() - dateA.getTime();
+        const completedOrdersList = allOrders.filter(order => {
+          const isValid = (
+            order.status === 'completed' &&
+            ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+             order.paymentMethod === 'COD')
+          );
+          console.log('Completed order check:', {
+            orderId: order.id,
+            isValid,
+            status: order.status,
+            paymentMethod: order.paymentMethod,
+            paymentStatus: order.paymentStatus,
+            amount: order.totalAmount
           });
-        setCompletedOrders(completedOrdersList);
+          return isValid;
+        });
 
-        // Calculate total orders (unique orders)
+        setCompletedOrders(completedOrdersList);
+        console.log('Completed orders count:', completedOrdersList.length);
+
+        // Calculate total orders
         const uniqueOrders = new Set([
           ...todayOrdersList.map(order => order.id),
           ...completedOrdersList.map(order => order.id)
         ]);
         setTotalOrders(uniqueOrders.size);
 
-        // Calculate revenue stats
-        calculateRevenueStats([...todayOrdersList, ...completedOrdersList]);
+        // Calculate revenue stats with all valid orders
+        const validOrders = allOrders.filter(order => 
+          order.createdAt && 
+          ((order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
+           order.paymentMethod === 'COD')
+        );
+        
+        console.log('Valid orders for revenue calculation:', validOrders.length);
+        calculateRevenueStats(validOrders);
 
       } catch (error) {
         console.error('Error processing orders:', error);
@@ -483,150 +559,87 @@ const Dashboard = () => {
   };
 
   // Calculate revenue statistics
+  const calculateChange = (current: number, previous: number): number => {
+    if (previous === 0) return current === 0 ? 0 : 100;
+    return ((current - previous) / previous) * 100;
+  };
+
   const calculateRevenueStats = (orders: Order[]) => {
-    try {
-      const now = new Date();
+    const now = new Date();
+    
+    // Today's revenue
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
+    
+    // Yesterday's revenue
+    const yesterdayStart = startOfDay(subDays(now, 1));
+    const yesterdayEnd = endOfDay(subDays(now, 1));
+    
+    // This week's revenue
+    const weekStart = startOfWeek(now);
+    const weekEnd = endOfWeek(now);
+    
+    // Last week's revenue
+    const lastWeekStart = startOfWeek(subWeeks(now, 1));
+    const lastWeekEnd = endOfWeek(subWeeks(now, 1));
+    
+    // This month's revenue
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    
+    // Last month's revenue
+    const lastMonthStart = startOfMonth(subMonths(now, 1));
+    const lastMonthEnd = endOfMonth(subMonths(now, 1));
+
+    let dailyRevenue = 0;
+    let yesterdayRevenue = 0;
+    let weeklyRevenue = 0;
+    let lastWeekRevenue = 0;
+    let monthlyRevenue = 0;
+    let lastMonthRevenue = 0;
+
+    orders.forEach((order) => {
+      if (!order.createdAt || !order.totalAmount) return;
       
-      // Set up time periods
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
+      const orderDate = order.createdAt.toDate();
+      const amount = Number(order.totalAmount) || 0;
 
-      // Calculate daily revenue (today's revenue)
-      const dailyTotal = orders.reduce((total, order) => {
-        if (!order.createdAt || !order.totalAmount) return total;
-        
-        const orderDate = order.createdAt.toDate();
-        // Check if order is from today
-        if (orderDate.getDate() === today.getDate() &&
-            orderDate.getMonth() === today.getMonth() &&
-            orderDate.getFullYear() === today.getFullYear()) {
-          
-          // Include order if it's completed or has valid payment
-          const isValidOrder = 
-            order.status === 'completed' || 
-            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-            order.paymentMethod === 'COD';
-          
-          if (isValidOrder) {
-            return total + order.totalAmount;
-          }
-        }
-        return total;
-            }, 0);
+      if (isWithinInterval(orderDate, { start: todayStart, end: todayEnd })) {
+        dailyRevenue += amount;
+      }
+      if (isWithinInterval(orderDate, { start: yesterdayStart, end: yesterdayEnd })) {
+        yesterdayRevenue += amount;
+      }
+      if (isWithinInterval(orderDate, { start: weekStart, end: weekEnd })) {
+        weeklyRevenue += amount;
+      }
+      if (isWithinInterval(orderDate, { start: lastWeekStart, end: lastWeekEnd })) {
+        lastWeekRevenue += amount;
+      }
+      if (isWithinInterval(orderDate, { start: monthStart, end: monthEnd })) {
+        monthlyRevenue += amount;
+      }
+      if (isWithinInterval(orderDate, { start: lastMonthStart, end: lastMonthEnd })) {
+        lastMonthRevenue += amount;
+      }
+    });
 
-      // Calculate yesterday's revenue for comparison
-      const yesterdayTotal = orders.reduce((total, order) => {
-        if (!order.createdAt || !order.totalAmount) return total;
-        
-        const orderDate = order.createdAt.toDate();
-        // Check if order is from yesterday
-        if (orderDate.getDate() === yesterday.getDate() &&
-            orderDate.getMonth() === yesterday.getMonth() &&
-            orderDate.getFullYear() === yesterday.getFullYear()) {
-          
-          const isValidOrder = 
-            order.status === 'completed' || 
-            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-            order.paymentMethod === 'COD';
-          
-          if (isValidOrder) {
-            return total + order.totalAmount;
-          }
-        }
-        return total;
-      }, 0);
-      
-      // Get start of current week (Sunday)
-      const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - today.getDay());
-      
-      // Get start of last week
-      const lastWeekStart = new Date(weekStart);
-      lastWeekStart.setDate(weekStart.getDate() - 7);
-      
-      // Get start of current month
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      
-      // Get start of last month
-      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const newRevenueStats: RevenueStats = {
+      daily: {
+        amount: dailyRevenue,
+        change: calculateChange(dailyRevenue, yesterdayRevenue)
+      },
+      weekly: {
+        amount: weeklyRevenue,
+        change: calculateChange(weeklyRevenue, lastWeekRevenue)
+      },
+      monthly: {
+        amount: monthlyRevenue,
+        change: calculateChange(monthlyRevenue, lastMonthRevenue)
+      }
+    };
 
-      // Helper function to calculate total amount for a period
-      const calculateTotalForPeriod = (startDate: Date, endDate?: Date) => {
-        return orders.reduce((total, order) => {
-          if (!order.createdAt || !order.totalAmount) return total;
-          
-          const orderDate = order.createdAt.toDate();
-          const isValidOrder = 
-            order.status === 'completed' || 
-            (order.paymentMethod === 'ONLINE' && order.paymentStatus === 'success') ||
-            order.paymentMethod === 'COD';
-          
-          if (!isValidOrder) return total;
-          
-          if (endDate) {
-            if (orderDate >= startDate && orderDate < endDate) {
-              return total + order.totalAmount;
-            }
-          } else {
-            if (orderDate >= startDate) {
-              return total + order.totalAmount;
-            }
-          }
-          return total;
-          }, 0);
-        };
-
-      // Calculate weekly and monthly totals
-      const weeklyTotal = calculateTotalForPeriod(weekStart);
-      const lastWeekTotal = calculateTotalForPeriod(lastWeekStart, weekStart);
-      const monthlyTotal = calculateTotalForPeriod(monthStart);
-      const lastMonthTotal = calculateTotalForPeriod(lastMonthStart, monthStart);
-
-      // Calculate percentage changes
-      const calculateChange = (current: number, previous: number) => {
-        if (previous === 0) return current > 0 ? 100 : 0;
-        return ((current - previous) / previous) * 100;
-      };
-
-      const dailyChange = calculateChange(dailyTotal, yesterdayTotal);
-      const weeklyChange = calculateChange(weeklyTotal, lastWeekTotal);
-      const monthlyChange = calculateChange(monthlyTotal, lastMonthTotal);
-
-      // Log revenue calculations for debugging
-      console.log('Revenue Calculations:', {
-        daily: { 
-          current: dailyTotal, 
-          previous: yesterdayTotal, 
-          change: dailyChange,
-          date: today.toLocaleDateString()
-        },
-        weekly: { current: weeklyTotal, previous: lastWeekTotal, change: weeklyChange },
-        monthly: { current: monthlyTotal, previous: lastMonthTotal, change: monthlyChange }
-      });
-
-      // Update revenue stats state
-      setRevenueStats({
-        daily: {
-          total: dailyTotal,
-          change: Math.abs(dailyChange),
-          trend: dailyChange >= 0 ? 'up' : 'down'
-        },
-          weekly: {
-          total: weeklyTotal,
-          change: Math.abs(weeklyChange),
-          trend: weeklyChange >= 0 ? 'up' : 'down'
-          },
-          monthly: {
-          total: monthlyTotal,
-          change: Math.abs(monthlyChange),
-          trend: monthlyChange >= 0 ? 'up' : 'down'
-        }
-      });
-      } catch (error) {
-      console.error('Error calculating revenue:', error);
-      toast.error('Failed to calculate revenue statistics');
-    }
+    setRevenueStats(newRevenueStats);
   };
 
   // Update revenue stats when orders change
@@ -677,21 +690,21 @@ const Dashboard = () => {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6">
       <RevenueCard
         title="Daily Revenue"
-        amount={revenueStats.daily.total}
+        amount={revenueStats.daily.amount}
         change={revenueStats.daily.change}
-        trend={revenueStats.daily.trend}
+        trend={revenueStats.daily.change > 0 ? 'up' : 'down'}
       />
       <RevenueCard
         title="Weekly Revenue"
-        amount={revenueStats.weekly.total}
+        amount={revenueStats.weekly.amount}
         change={revenueStats.weekly.change}
-        trend={revenueStats.weekly.trend}
+        trend={revenueStats.weekly.change > 0 ? 'up' : 'down'}
       />
       <RevenueCard
         title="Monthly Revenue"
-        amount={revenueStats.monthly.total}
+        amount={revenueStats.monthly.amount}
         change={revenueStats.monthly.change}
-        trend={revenueStats.monthly.trend}
+        trend={revenueStats.monthly.change > 0 ? 'up' : 'down'}
       />
     </div>
   );
@@ -778,13 +791,15 @@ const Dashboard = () => {
     }
   };
 
-  const handleToggleAvailability = async (itemId: string, currentStatus: boolean) => {
+  const handleToggleAvailability = async (itemId: string, currentStatus: boolean | undefined) => {
     try {
       const itemRef = doc(db, 'menuItems', itemId);
+      // If currentStatus is undefined, default to false (making it available)
+      const newStatus = currentStatus === undefined ? true : !currentStatus;
       await updateDoc(itemRef, {
-        isAvailable: !currentStatus
+        isAvailable: newStatus
       });
-      toast.success(`Item ${!currentStatus ? 'enabled' : 'disabled'} successfully`);
+      toast.success(`Item ${newStatus ? 'enabled' : 'disabled'} successfully`);
     } catch (error) {
       console.error('Error toggling availability:', error);
       toast.error('Failed to toggle availability');
@@ -1122,6 +1137,375 @@ const Dashboard = () => {
     );
   };
 
+  // Add this function before the return statement
+  const renderTodayOrders = () => {
+    const sortedOrders = [...todayOrders].sort((a, b) => 
+      b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
+    );
+
+    const totalAmount = sortedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+    const renderPhoneNumbers = (order: Order) => (
+      <div className="flex items-center gap-2">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <Phone className="h-3 w-3 text-blue-500" />
+            <a href={`tel:${order.userPhone}`} className="text-xs text-blue-600 hover:underline">
+              {order.userPhone}
+            </a>
+          </div>
+          {order.alternativePhone && (
+            <div className="flex items-center gap-1">
+              <Phone className="h-3 w-3 text-green-500" />
+              <a href={`tel:${order.alternativePhone}`} className="text-xs text-green-600 hover:underline">
+                {order.alternativePhone}
+              </a>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(`tel:${order.userPhone}`);
+            }}
+            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+          >
+            <Phone className="h-4 w-4" />
+          </button>
+          {order.alternativePhone && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(`tel:${order.alternativePhone}`);
+              }}
+              className="p-1 text-green-600 hover:bg-green-50 rounded"
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="bg-white rounded-lg shadow-md p-2 sm:p-4 mb-3 sm:mb-4">
+        <div className="flex items-center justify-between mb-2 sm:mb-4 sticky top-0 bg-white z-10 py-2">
+          <div>
+            <h3 className="text-base sm:text-lg font-semibold">Today's Orders</h3>
+            <p className="text-sm text-gray-600">Total Amount: ₹{totalAmount.toLocaleString()}</p>
+          </div>
+          <span className="text-xs sm:text-sm text-gray-600">Total Orders: {sortedOrders.length}</span>
+        </div>
+        <div className="space-y-2 sm:space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          {sortedOrders.map((order, index) => (
+            <div key={order.id} 
+              className="border rounded-lg hover:bg-gray-50 transition-colors"
+              onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+            >
+              <div className="p-2 sm:p-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
+                    <div className={`w-2 h-2 rounded-full ${
+                      order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+                    }`} />
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm sm:text-base">{order.userName}</span>
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                          #{order.id.slice(-6)}
+                        </span>
+                      </div>
+                      <div className="text-xs sm:text-sm text-gray-500 mt-1">
+                        {order.items.length} items • ₹{order.totalAmount}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      order.paymentMethod === 'COD' 
+                        ? 'bg-yellow-100 text-yellow-800' 
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      {order.paymentMethod}
+                    </span>
+                    {renderPhoneNumbers(order)}
+                  </div>
+                </div>
+              </div>
+              {/* Expanded View - Better mobile layout */}
+              {expandedOrderId === order.id && (
+                <div className="border-t p-2 sm:p-3 bg-gray-50">
+                  <div className="space-y-3">
+                    {/* Customer Details */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                        <div className="bg-white p-2 rounded text-sm">
+                          <p>{order.userName}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p>Phone: {order.userPhone}</p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`tel:${order.userPhone}`);
+                              }}
+                              className="text-blue-500"
+                            >
+                              <Phone className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                        <div className="bg-white p-2 rounded text-sm">
+                          <p>{order.address.street}</p>
+                          <p>{order.address.city}, {order.address.pincode}</p>
+                          {order.address.landmark && (
+                            <p className="text-gray-500 mt-1">
+                              Landmark: {order.address.landmark}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order Items */}
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                      <div className="bg-white rounded p-2 space-y-1.5">
+                        {order.items.map((item) => (
+                          <div key={item.id} className="flex justify-between text-sm">
+                            <span>{item.name} × {item.quantity}</span>
+                            <span>₹{item.price * item.quantity}</span>
+                          </div>
+                        ))}
+                        <div className="border-t pt-2 mt-2">
+                          <div className="flex justify-between text-sm font-medium">
+                            <span>Total Amount</span>
+                            <span>₹{order.totalAmount}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      {order.status !== 'completed' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUpdateOrderStatus(order.id, 'completed');
+                          }}
+                          className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600"
+                        >
+                          Mark as Completed
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`tel:${order.userPhone}`);
+                        }}
+                        className="flex-1 bg-blue-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-blue-600"
+                      >
+                        Call Customer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCompletedOrders = () => {
+    const sortedOrders = [...completedOrders].sort((a, b) => 
+      b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
+    );
+
+    const totalAmount = sortedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+    const renderPhoneNumbers = (order: Order) => (
+      <div className="flex items-center gap-2">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <Phone className="h-3 w-3 text-blue-500" />
+            <a href={`tel:${order.userPhone}`} className="text-xs text-blue-600 hover:underline">
+              {order.userPhone}
+            </a>
+          </div>
+          {order.alternativePhone && (
+            <div className="flex items-center gap-1">
+              <Phone className="h-3 w-3 text-green-500" />
+              <a href={`tel:${order.alternativePhone}`} className="text-xs text-green-600 hover:underline">
+                {order.alternativePhone}
+              </a>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(`tel:${order.userPhone}`);
+            }}
+            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+          >
+            <Phone className="h-4 w-4" />
+          </button>
+          {order.alternativePhone && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(`tel:${order.alternativePhone}`);
+              }}
+              className="p-1 text-green-600 hover:bg-green-50 rounded"
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="bg-white rounded-lg shadow-md p-3 mb-4">
+        <div className="flex items-center justify-between mb-4 sticky top-0 bg-white z-10 py-2">
+          <div>
+            <h3 className="text-lg font-semibold">Completed Orders</h3>
+            <p className="text-sm text-gray-600">Total Amount: ₹{totalAmount.toLocaleString()}</p>
+          </div>
+          <span className="text-sm text-gray-600">Total Orders: {sortedOrders.length}</span>
+        </div>
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          {sortedOrders.map((order, index) => (
+            <div key={order.id} 
+              className="border rounded-lg hover:bg-gray-50 transition-colors"
+              onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+            >
+              <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
+                  <div className={`w-2 h-2 rounded-full ${
+                    order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+                  }`} />
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{order.userName}</span>
+                      <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                        #{order.id.slice(-6)}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      {order.items.length} items • ₹{order.totalAmount}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    order.paymentMethod === 'COD' 
+                      ? 'bg-yellow-100 text-yellow-800' 
+                      : 'bg-green-100 text-green-800'
+                  }`}>
+                    {order.paymentMethod}
+                  </span>
+                  {renderPhoneNumbers(order)}
+                </div>
+              </div>
+              {/* Expanded View */}
+              {expandedOrderId === order.id && (
+                <div className="border-t p-3 bg-gray-50 space-y-4">
+                  {/* Customer Details */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                      <div className="bg-white p-2 rounded">
+                        <p className="text-sm">{order.userName}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-sm">Phone: {order.userPhone}</p>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`tel:${order.userPhone}`);
+                            }}
+                            className="text-blue-500"
+                          >
+                            <Phone className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                      <div className="bg-white p-2 rounded">
+                        <p className="text-sm">{order.address.street}</p>
+                        <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
+                        {order.address.landmark && (
+                          <p className="text-sm text-gray-500 mt-1">
+                            Landmark: {order.address.landmark}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Order Items */}
+                  <div>
+                    <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                    <div className="bg-white rounded p-2 space-y-2">
+                      {order.items.map((item) => (
+                        <div key={item.id} className="flex justify-between text-sm">
+                          <span>{item.name} × {item.quantity}</span>
+                          <span>₹{item.price * item.quantity}</span>
+                        </div>
+                      ))}
+                      <div className="border-t pt-2 mt-2">
+                        <div className="flex justify-between text-sm font-medium">
+                          <span>Total Amount</span>
+                          <span>₹{order.totalAmount}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    {order.status !== 'completed' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateOrderStatus(order.id, 'completed');
+                        }}
+                        className="flex-1 bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600"
+                      >
+                        Mark as Completed
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`tel:${order.userPhone}`);
+                      }}
+                      className="flex-1 bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600"
+                    >
+                      Call Customer
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -1303,15 +1687,15 @@ const Dashboard = () => {
                       {selectedRevenuePeriod.charAt(0).toUpperCase() + selectedRevenuePeriod.slice(1)} Revenue
                     </h2>
                     <p className="text-2xl sm:text-3xl font-bold text-gray-700 mt-1">
-                      ₹{revenueStats[selectedRevenuePeriod].total.toLocaleString()}
+                      ₹{revenueStats[selectedRevenuePeriod].amount.toLocaleString()}
                     </p>
                     <div className="flex items-center mt-2">
                       <span className={`text-sm ${
-                        revenueStats[selectedRevenuePeriod].trend === 'up' 
+                        revenueStats[selectedRevenuePeriod].change > 0 
                           ? 'text-green-600' 
                           : 'text-red-600'
                       }`}>
-                        {revenueStats[selectedRevenuePeriod].trend === 'up' 
+                        {revenueStats[selectedRevenuePeriod].change > 0 
                           ? <ArrowUp className="h-4 w-4 inline mr-1" /> 
                           : <ArrowDown className="h-4 w-4 inline mr-1" />
                         }
@@ -1360,7 +1744,7 @@ const Dashboard = () => {
                   <div>
                     <p className="text-xs sm:text-sm text-gray-500">Avg. Order Value</p>
                     <p className="text-lg sm:text-xl font-semibold mt-1">
-                      ₹{(revenueStats[selectedRevenuePeriod].total / (
+                      ₹{(revenueStats[selectedRevenuePeriod].amount / (
                         selectedRevenuePeriod === 'daily' 
                           ? Math.max(todayOrders.length, 1)
                           : selectedRevenuePeriod === 'weekly'
@@ -1385,282 +1769,8 @@ const Dashboard = () => {
           </div>
 
           {/* Orders Lists - Better mobile spacing */}
-        {showTodayOrders && (
-            <div className="bg-white rounded-lg shadow-md p-2 sm:p-4 mb-3 sm:mb-4">
-              <div className="flex items-center justify-between mb-2 sm:mb-4 sticky top-0 bg-white z-10 py-2">
-                <h3 className="text-base sm:text-lg font-semibold">Today's Orders</h3>
-                <span className="text-xs sm:text-sm text-gray-600">Total: {todayOrders.length}</span>
-              </div>
-              <div className="space-y-2 sm:space-y-3 max-h-[60vh] overflow-y-auto">
-                {todayOrders.map((order) => (
-                  <div key={order.id} 
-                    className="border rounded-lg hover:bg-gray-50 transition-colors"
-                    onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                  >
-                    <div className="p-2 sm:p-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                          }`} />
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-sm sm:text-base">{order.userName}</span>
-                              <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                                #{order.id.slice(-6)}
-                              </span>
-                            </div>
-                            <div className="text-xs sm:text-sm text-gray-500 mt-1">
-                              {order.items.length} items • ₹{order.totalAmount}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            order.paymentMethod === 'COD' 
-                              ? 'bg-yellow-100 text-yellow-800' 
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {order.paymentMethod}
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`tel:${order.userPhone}`);
-                            }}
-                            className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded-full"
-                          >
-                            <Phone className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded View - Better mobile layout */}
-                    {expandedOrderId === order.id && (
-                      <div className="border-t p-2 sm:p-3 bg-gray-50">
-                        <div className="space-y-3">
-                          {/* Customer Details */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                              <div className="bg-white p-2 rounded text-sm">
-                                <p>{order.userName}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <p>Phone: {order.userPhone}</p>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      window.open(`tel:${order.userPhone}`);
-                                    }}
-                                    className="text-blue-500"
-                                  >
-                                    <Phone className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                            <div>
-                              <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                              <div className="bg-white p-2 rounded text-sm">
-                                <p>{order.address.street}</p>
-                                <p>{order.address.city}, {order.address.pincode}</p>
-                                {order.address.landmark && (
-                                  <p className="text-gray-500 mt-1">
-                                    Landmark: {order.address.landmark}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Order Items */}
-                          <div>
-                            <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                            <div className="bg-white rounded p-2 space-y-1.5">
-                              {order.items.map((item) => (
-                                <div key={item.id} className="flex justify-between text-sm">
-                                  <span>{item.name} × {item.quantity}</span>
-                                  <span>₹{item.price * item.quantity}</span>
-                                </div>
-                              ))}
-                              <div className="border-t pt-2 mt-2">
-                                <div className="flex justify-between text-sm font-medium">
-                                  <span>Total Amount</span>
-                                  <span>₹{order.totalAmount}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Actions */}
-                          <div className="flex gap-2">
-                            {order.status !== 'completed' && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdateOrderStatus(order.id, 'completed');
-                                }}
-                                className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600"
-                              >
-                                Mark as Completed
-                              </button>
-                            )}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(`tel:${order.userPhone}`);
-                              }}
-                              className="flex-1 bg-blue-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-blue-600"
-                            >
-                              Call Customer
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {showCompletedOrders && (
-            <div className="bg-white rounded-lg shadow-md p-3 mb-4">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Completed Orders</h3>
-                <span className="text-sm text-gray-600">Total: {completedOrders.length}</span>
-            </div>
-            <div className="space-y-3 max-h-[70vh] overflow-y-auto">
-                {completedOrders.map((order, index) => (
-                <div key={order.id} 
-                  className="border rounded-lg hover:bg-gray-50 transition-colors"
-                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                >
-                  {/* Order Summary - Always Visible */}
-                  <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <div className={`w-2 h-2 rounded-full ${
-                        order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                      }`} />
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium">{order.userName}</span>
-                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                            #{order.id.slice(-6)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-500 mt-1">
-                          {order.items.length} items • ₹{order.totalAmount}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        order.paymentMethod === 'COD' 
-                          ? 'bg-yellow-100 text-yellow-800' 
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {order.paymentMethod}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(`tel:${order.userPhone}`);
-                        }}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-full"
-                      >
-                        <Phone className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Expanded View */}
-                  {expandedOrderId === order.id && (
-                    <div className="border-t p-3 bg-gray-50 space-y-4">
-                      {/* Customer Details */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                          <div className="bg-white p-2 rounded">
-                            <p className="text-sm">{order.userName}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <p className="text-sm">Phone: {order.userPhone}</p>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.open(`tel:${order.userPhone}`);
-                                }}
-                                className="text-blue-500"
-                              >
-                                <Phone className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                          <div className="bg-white p-2 rounded">
-                            <p className="text-sm">{order.address.street}</p>
-                            <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
-                            {order.address.landmark && (
-                              <p className="text-sm text-gray-500 mt-1">
-                                Landmark: {order.address.landmark}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Order Items */}
-                      <div>
-                        <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                        <div className="bg-white rounded p-2 space-y-2">
-                          {order.items.map((item) => (
-                            <div key={item.id} className="flex justify-between text-sm">
-                              <span>{item.name} × {item.quantity}</span>
-                              <span>₹{item.price * item.quantity}</span>
-                            </div>
-                          ))}
-                          <div className="border-t pt-2 mt-2">
-                            <div className="flex justify-between text-sm font-medium">
-                              <span>Total Amount</span>
-                              <span>₹{order.totalAmount}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex gap-2">
-                        {order.status !== 'completed' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUpdateOrderStatus(order.id, 'completed');
-                            }}
-                            className="flex-1 bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600"
-                          >
-                            Mark as Completed
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(`tel:${order.userPhone}`);
-                          }}
-                          className="flex-1 bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600"
-                        >
-                          Call Customer
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {showTodayOrders && renderTodayOrders()}
+        {showCompletedOrders && renderCompletedOrders()}
 
           {/* Menu Management Section */}
           <div className="bg-white rounded-lg shadow-md p-2 sm:p-4">
