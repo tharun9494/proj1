@@ -140,7 +140,7 @@ interface RevenueStats {
 
 type Unsubscribe = () => void;
 
-const Dashboard = () => {
+const Dashboard: React.FC = () => {
   const { isAdmin } = useAuth();
   const [totalItems, setTotalItems] = useState(0);
   const [todayOrders, setTodayOrders] = useState<Order[]>([]);
@@ -1963,7 +1963,6 @@ const Dashboard = () => {
                           {message.createdAt?.toDate().toLocaleString()}
                         </p>
                       </div>
-
                     </div>
                     <div className="text-xs md:text-sm text-gray-600 mb-2 p-2 md:p-3 bg-gray-50 rounded">
                       {message.message}
@@ -2302,5 +2301,7 @@ const Dashboard = () => {
       </div>
     </div>
   );
-};export default Dashboard;
+};
+
+export default Dashboard;
 
