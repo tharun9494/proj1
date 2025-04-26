@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { 
   ShoppingBag, 
@@ -41,7 +41,6 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { populateMenu } from '../../scripts/populateMenu';
 import { getOrderStats } from '../../services/orderService';
 import { 
   LineChart, 
@@ -143,13 +142,21 @@ type Unsubscribe = () => void;
 const Dashboard = () => {
   const { isAdmin } = useAuth();
   const [totalItems, setTotalItems] = useState(0);
-  const [todayOrders, setTodayOrders] = useState<Order[]>([]);
-  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
-  const [pastOrders, setPastOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<{
+    today: Order[];
+    completed: Order[];
+    past: Order[];
+  }>({
+    today: [],
+    completed: [],
+    past: []
+  });
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [showTodayOrders, setShowTodayOrders] = useState(false);
   const [showCompletedOrders, setShowCompletedOrders] = useState(false);
+  const [showAllItems, setShowAllItems] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
   const [orderStats, setOrderStats] = useState<any>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [newItem, setNewItem] = useState<Partial<MenuItem>>({
@@ -162,10 +169,7 @@ const Dashboard = () => {
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [showMessages, setShowMessages] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAllItems, setShowAllItems] = useState(false);
-  const ITEMS_PER_PAGE = 5; // Number of items to show initially
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [restaurantStatus, setRestaurantStatus] = useState<boolean>(false);
   const [categories, setCategories] = useState<string[]>([]);
@@ -190,7 +194,7 @@ const Dashboard = () => {
   });
   const [newOrderNotification, setNewOrderNotification] = useState<{
     show: boolean;
-    order: any;
+    order: Order | null;
   }>({ show: false, order: null });
   const [isSoundEnabled, setIsSoundEnabled] = useState(false);
   const [revenueStats, setRevenueStats] = useState<RevenueStats>({
@@ -200,10 +204,11 @@ const Dashboard = () => {
   });
   const [totalOrders, setTotalOrders] = useState(0);
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  const [filteredMenuItems, setFilteredMenuItems] = useState<any[]>([]);
-  // Add state for expanded categories
+  const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  const ITEMS_PER_CATEGORY = 5; // Number of items to show initially per category
+
+  const ITEMS_PER_PAGE = 5;
+  const ITEMS_PER_CATEGORY = 5;
 
   const initialOfferState = {
     title: '',
@@ -368,7 +373,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     // Update orders listener to play sound only after user interaction
-    if (todayOrders.length > previousOrdersCountRef.current) {
+    if (orders.today.length > previousOrdersCountRef.current) {
       // Show toast notification
       toast.success('New order received!', {
         duration: 2000,
@@ -376,8 +381,8 @@ const Dashboard = () => {
         icon: '🔔'
       });
     }
-    previousOrdersCountRef.current = todayOrders.length;
-  }, [todayOrders.length]);
+    previousOrdersCountRef.current = orders.today.length;
+  }, [orders.today.length]);
 
   // Fix restaurant status listener
   useEffect(() => {
@@ -510,7 +515,7 @@ const Dashboard = () => {
           return isValid;
         });
 
-        setTodayOrders(todayOrdersList);
+        setOrders({ ...orders, today: todayOrdersList });
         console.log('Today\'s orders count:', todayOrdersList.length);
 
         // Filter completed orders
@@ -531,7 +536,7 @@ const Dashboard = () => {
           return isValid;
         });
 
-        setCompletedOrders(completedOrdersList);
+        setOrders({ ...orders, completed: completedOrdersList });
         console.log('Completed orders count:', completedOrdersList.length);
 
         // Calculate total orders
@@ -644,11 +649,11 @@ const Dashboard = () => {
 
   // Update revenue stats when orders change
   useEffect(() => {
-    const allOrders = [...todayOrders, ...completedOrders];
+    const allOrders = [...orders.today, ...orders.completed];
     if (allOrders.length > 0) {
       calculateRevenueStats(allOrders);
     }
-  }, [todayOrders, completedOrders]);
+  }, [orders.today, orders.completed]);
 
   // Revenue Card Component
   const RevenueCard = ({ title, amount, change, trend }: {
@@ -1137,134 +1142,226 @@ const Dashboard = () => {
     );
   };
 
-  // Add this function before the return statement
-  const renderTodayOrders = () => {
-    const sortedOrders = [...todayOrders].sort((a, b) => 
-      b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
-    );
-
-    const totalAmount = sortedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
-
-    const renderPhoneNumbers = (order: Order) => (
-      <div className="flex items-center gap-2">
-        <div className="flex flex-col">
+  // Add the renderPhoneNumbers function
+  const renderPhoneNumbers = (order: Order) => (
+    <div className="flex items-center gap-2">
+      <div className="flex flex-col">
+        <div className="flex items-center gap-1">
+          <Phone className="h-3 w-3 text-blue-500" />
+          <a href={`tel:${order.userPhone}`} className="text-xs text-blue-600 hover:underline">
+            {order.userPhone}
+          </a>
+        </div>
+        {order.alternativePhone && (
           <div className="flex items-center gap-1">
-            <Phone className="h-3 w-3 text-blue-500" />
-            <a href={`tel:${order.userPhone}`} className="text-xs text-blue-600 hover:underline">
-              {order.userPhone}
+            <Phone className="h-3 w-3 text-green-500" />
+            <a href={`tel:${order.alternativePhone}`} className="text-xs text-green-600 hover:underline">
+              {order.alternativePhone}
             </a>
           </div>
-          {order.alternativePhone && (
-            <div className="flex items-center gap-1">
-              <Phone className="h-3 w-3 text-green-500" />
-              <a href={`tel:${order.alternativePhone}`} className="text-xs text-green-600 hover:underline">
-                {order.alternativePhone}
-              </a>
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
+        )}
+      </div>
+      <div className="flex flex-col gap-1">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            window.open(`tel:${order.userPhone}`);
+          }}
+          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+        >
+          <Phone className="h-4 w-4" />
+        </button>
+        {order.alternativePhone && (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              window.open(`tel:${order.userPhone}`);
+              window.open(`tel:${order.alternativePhone}`);
             }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+            className="p-1 text-green-600 hover:bg-green-50 rounded"
           >
             <Phone className="h-4 w-4" />
           </button>
-          {order.alternativePhone && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(`tel:${order.alternativePhone}`);
-              }}
-              className="p-1 text-green-600 hover:bg-green-50 rounded"
-            >
-              <Phone className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        )}
       </div>
+    </div>
+  );
+
+  // Update the renderTodayOrders function
+  const renderTodayOrders = () => {
+    const sortedOrders = [...orders.today].sort((a, b) => 
+      b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
     );
 
     return (
-      <div className="bg-white rounded-lg shadow-md p-2 sm:p-4 mb-3 sm:mb-4">
-        <div className="flex items-center justify-between mb-2 sm:mb-4 sticky top-0 bg-white z-10 py-2">
-          <div>
-            <h3 className="text-base sm:text-lg font-semibold">Today's Orders</h3>
-            <p className="text-sm text-gray-600">Total Amount: ₹{totalAmount.toLocaleString()}</p>
-          </div>
-          <span className="text-xs sm:text-sm text-gray-600">Total Orders: {sortedOrders.length}</span>
+      <div className="mt-4">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">Today's Orders</h2>
+          <button
+            onClick={() => setShowTodayOrders(!showTodayOrders)}
+            className="text-blue-600 hover:text-blue-800"
+          >
+            {showTodayOrders ? 'Hide' : 'Show'}
+          </button>
         </div>
-        <div className="space-y-2 sm:space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
-          {sortedOrders.map((order, index) => (
-            <div key={order.id} 
-              className="border rounded-lg hover:bg-gray-50 transition-colors"
-              onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-            >
-              <div className="p-2 sm:p-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+        {showTodayOrders && (
+          <div className="space-y-4">
+            {sortedOrders.map((order, index) => (
+              <div key={order.id} 
+                className="border rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <div className="p-2 sm:p-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
+                      <div className={`w-2 h-2 rounded-full ${
+                        order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+                      }`} />
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm sm:text-base">{order.userName}</span>
+                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                            #{order.id.slice(-6)}
+                          </span>
+                        </div>
+                        <div className="text-xs sm:text-sm text-gray-500 mt-1">
+                          {order.items.length} items • ₹{order.totalAmount}
+                        </div>
+                      </div>
+                    </div>
+                    {renderPhoneNumbers(order)}
+                  </div>
+                </div>
+                {/* Expanded View - Better mobile layout */}
+                {expandedOrderId === order.id && (
+                  <div className="border-t p-2 sm:p-3 bg-gray-50">
+                    <div className="space-y-3">
+                      {/* Customer Details */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                          <div className="bg-white p-2 rounded text-sm">
+                            <p>{order.userName}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                          <div className="bg-white p-2 rounded text-sm">
+                            <p>{order.address.street}</p>
+                            <p>{order.address.city}, {order.address.pincode}</p>
+                            {order.address.landmark && (
+                              <p className="text-gray-500 mt-1">
+                                Landmark: {order.address.landmark}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Order Items */}
+                      <div>
+                        <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                        <div className="bg-white rounded p-2 space-y-1.5">
+                          {order.items.map((item) => (
+                            <div key={item.id} className="flex justify-between text-sm">
+                              <span>{item.name} × {item.quantity}</span>
+                              <span>₹{item.price * item.quantity}</span>
+                            </div>
+                          ))}
+                          <div className="border-t pt-2 mt-2">
+                            <div className="flex justify-between text-sm font-medium">
+                              <span>Total Amount</span>
+                              <span>₹{order.totalAmount}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        {order.status !== 'completed' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUpdateOrderStatus(order.id, 'completed');
+                            }}
+                            className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600"
+                          >
+                            Mark as Completed
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Update the renderCompletedOrders function
+  const renderCompletedOrders = () => {
+    const sortedOrders = [...orders.completed].sort((a, b) => 
+      b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
+    );
+
+    return (
+      <div className="mt-4">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">Completed Orders</h2>
+          <button
+            onClick={() => setShowCompletedOrders(!showCompletedOrders)}
+            className="text-blue-600 hover:text-blue-800"
+          >
+            {showCompletedOrders ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {showCompletedOrders && (
+          <div className="space-y-4">
+            {sortedOrders.map((order, index) => (
+              <div key={order.id} 
+                className="border rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
                     <div className={`w-2 h-2 rounded-full ${
                       order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
                     }`} />
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm sm:text-base">{order.userName}</span>
+                        <span className="font-medium">{order.userName}</span>
                         <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
                           #{order.id.slice(-6)}
                         </span>
                       </div>
-                      <div className="text-xs sm:text-sm text-gray-500 mt-1">
+                      <div className="text-sm text-gray-500 mt-1">
                         {order.items.length} items • ₹{order.totalAmount}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      order.paymentMethod === 'COD' 
-                        ? 'bg-yellow-100 text-yellow-800' 
-                        : 'bg-green-100 text-green-800'
-                    }`}>
-                      {order.paymentMethod}
-                    </span>
-                    {renderPhoneNumbers(order)}
-                  </div>
+                  {renderPhoneNumbers(order)}
                 </div>
-              </div>
-              {/* Expanded View - Better mobile layout */}
-              {expandedOrderId === order.id && (
-                <div className="border-t p-2 sm:p-3 bg-gray-50">
-                  <div className="space-y-3">
+                {/* Expanded View */}
+                {expandedOrderId === order.id && (
+                  <div className="border-t p-3 bg-gray-50 space-y-4">
                     {/* Customer Details */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                        <div className="bg-white p-2 rounded text-sm">
-                          <p>{order.userName}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p>Phone: {order.userPhone}</p>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(`tel:${order.userPhone}`);
-                              }}
-                              className="text-blue-500"
-                            >
-                              <Phone className="h-4 w-4" />
-                            </button>
-                          </div>
+                        <div className="bg-white p-2 rounded">
+                          <p className="text-sm">{order.userName}</p>
                         </div>
                       </div>
                       <div>
                         <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                        <div className="bg-white p-2 rounded text-sm">
-                          <p>{order.address.street}</p>
-                          <p>{order.address.city}, {order.address.pincode}</p>
+                        <div className="bg-white p-2 rounded">
+                          <p className="text-sm">{order.address.street}</p>
+                          <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
                           {order.address.landmark && (
-                            <p className="text-gray-500 mt-1">
+                            <p className="text-sm text-gray-500 mt-1">
                               Landmark: {order.address.landmark}
                             </p>
                           )}
@@ -1275,7 +1372,7 @@ const Dashboard = () => {
                     {/* Order Items */}
                     <div>
                       <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                      <div className="bg-white rounded p-2 space-y-1.5">
+                      <div className="bg-white rounded p-2 space-y-2">
                         {order.items.map((item) => (
                           <div key={item.id} className="flex justify-between text-sm">
                             <span>{item.name} × {item.quantity}</span>
@@ -1299,209 +1396,18 @@ const Dashboard = () => {
                             e.stopPropagation();
                             handleUpdateOrderStatus(order.id, 'completed');
                           }}
-                          className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600"
+                          className="flex-1 bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600"
                         >
                           Mark as Completed
                         </button>
                       )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(`tel:${order.userPhone}`);
-                        }}
-                        className="flex-1 bg-blue-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-blue-600"
-                      >
-                        Call Customer
-                      </button>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const renderCompletedOrders = () => {
-    const sortedOrders = [...completedOrders].sort((a, b) => 
-      b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
-    );
-
-    const totalAmount = sortedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
-
-    const renderPhoneNumbers = (order: Order) => (
-      <div className="flex items-center gap-2">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-1">
-            <Phone className="h-3 w-3 text-blue-500" />
-            <a href={`tel:${order.userPhone}`} className="text-xs text-blue-600 hover:underline">
-              {order.userPhone}
-            </a>
-          </div>
-          {order.alternativePhone && (
-            <div className="flex items-center gap-1">
-              <Phone className="h-3 w-3 text-green-500" />
-              <a href={`tel:${order.alternativePhone}`} className="text-xs text-green-600 hover:underline">
-                {order.alternativePhone}
-              </a>
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              window.open(`tel:${order.userPhone}`);
-            }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-          >
-            <Phone className="h-4 w-4" />
-          </button>
-          {order.alternativePhone && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(`tel:${order.alternativePhone}`);
-              }}
-              className="p-1 text-green-600 hover:bg-green-50 rounded"
-            >
-              <Phone className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </div>
-    );
-
-    return (
-      <div className="bg-white rounded-lg shadow-md p-3 mb-4">
-        <div className="flex items-center justify-between mb-4 sticky top-0 bg-white z-10 py-2">
-          <div>
-            <h3 className="text-lg font-semibold">Completed Orders</h3>
-            <p className="text-sm text-gray-600">Total Amount: ₹{totalAmount.toLocaleString()}</p>
-          </div>
-          <span className="text-sm text-gray-600">Total Orders: {sortedOrders.length}</span>
-        </div>
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
-          {sortedOrders.map((order, index) => (
-            <div key={order.id} 
-              className="border rounded-lg hover:bg-gray-50 transition-colors"
-              onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-            >
-              <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
-                  <div className={`w-2 h-2 rounded-full ${
-                    order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                  }`} />
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">{order.userName}</span>
-                      <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                        #{order.id.slice(-6)}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      {order.items.length} items • ₹{order.totalAmount}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    order.paymentMethod === 'COD' 
-                      ? 'bg-yellow-100 text-yellow-800' 
-                      : 'bg-green-100 text-green-800'
-                  }`}>
-                    {order.paymentMethod}
-                  </span>
-                  {renderPhoneNumbers(order)}
-                </div>
+                )}
               </div>
-              {/* Expanded View */}
-              {expandedOrderId === order.id && (
-                <div className="border-t p-3 bg-gray-50 space-y-4">
-                  {/* Customer Details */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                      <div className="bg-white p-2 rounded">
-                        <p className="text-sm">{order.userName}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <p className="text-sm">Phone: {order.userPhone}</p>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`tel:${order.userPhone}`);
-                            }}
-                            className="text-blue-500"
-                          >
-                            <Phone className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                      <div className="bg-white p-2 rounded">
-                        <p className="text-sm">{order.address.street}</p>
-                        <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
-                        {order.address.landmark && (
-                          <p className="text-sm text-gray-500 mt-1">
-                            Landmark: {order.address.landmark}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Order Items */}
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                    <div className="bg-white rounded p-2 space-y-2">
-                      {order.items.map((item) => (
-                        <div key={item.id} className="flex justify-between text-sm">
-                          <span>{item.name} × {item.quantity}</span>
-                          <span>₹{item.price * item.quantity}</span>
-                        </div>
-                      ))}
-                      <div className="border-t pt-2 mt-2">
-                        <div className="flex justify-between text-sm font-medium">
-                          <span>Total Amount</span>
-                          <span>₹{order.totalAmount}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    {order.status !== 'completed' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUpdateOrderStatus(order.id, 'completed');
-                        }}
-                        className="flex-1 bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600"
-                      >
-                        Mark as Completed
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(`tel:${order.userPhone}`);
-                      }}
-                      className="flex-1 bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600"
-                    >
-                      Call Customer
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -1530,777 +1436,500 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Main Dashboard Content */}
-      <div className="py-2 sm:py-4">
-      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
-          {/* Header Section - More compact on mobile */}
-          <div className="mb-3 sm:mb-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
-            <div>
-                <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p className="text-xs sm:text-base text-gray-600">Manage your restaurant's menu and orders</p>
-            </div>
-            <button
-              onClick={handleToggleRestaurantStatus}
-                className={`w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm sm:text-base font-medium flex items-center justify-center gap-2 ${
-                  restaurantStatus
-                  ? 'bg-green-500 text-white hover:bg-green-600'
-                  : 'bg-red-500 text-white hover:bg-red-600'
-              }`}
-            >
-                {restaurantStatus ? (
-                <>
-                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                  Restaurant is Open
-                </>
-              ) : (
-                <>
-                    <XCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                  Restaurant is Closed
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-          {/* Stats Cards - Responsive grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-6">
-          {/* Total Items */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-              className="bg-white p-3 sm:p-4 rounded-lg shadow-md"
-          >
-            <div className="flex items-center">
-                <Package className="h-6 w-6 sm:h-8 sm:w-8 text-red-500" />
-                <div className="ml-2 sm:ml-3">
-                  <h2 className="text-sm sm:text-base font-semibold text-gray-900">Total Items</h2>
-                  <p className="text-lg sm:text-2xl font-bold text-gray-700">{totalItems}</p>
+      <div className="container mx-auto px-4 py-8">
+        {/* Main Dashboard Content */}
+        <div className="py-2 sm:py-4">
+          <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+            {/* Header Section - More compact on mobile */}
+            <div className="mb-3 sm:mb-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
+                <div>
+                  <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+                  <p className="text-xs sm:text-base text-gray-600">Manage your restaurant's menu and orders</p>
                 </div>
-              </div>
-            </motion.div>
-
-            {/* Total Orders */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white p-3 sm:p-4 rounded-lg shadow-md"
-            >
-              <div className="flex items-center">
-                <ShoppingBag className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
-                <div className="ml-2 sm:ml-3">
-                  <h2 className="text-sm sm:text-base font-semibold text-gray-900">Total Orders</h2>
-                  <p className="text-lg sm:text-2xl font-bold text-gray-700">{totalOrders}</p>
+                <button
+                  onClick={handleToggleRestaurantStatus}
+                  className={`w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm sm:text-base font-medium flex items-center justify-center gap-2 ${
+                    restaurantStatus
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : 'bg-red-500 text-white hover:bg-red-600'
+                  }`}
+                >
+                  {restaurantStatus ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+                      Restaurant is Open
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+                      Restaurant is Closed
+                    </>
+                  )}
+                </button>
               </div>
             </div>
-          </motion.div>
 
-          {/* Today's Orders */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            onClick={() => setShowTodayOrders(!showTodayOrders)}
-              className="bg-white p-3 sm:p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                  <ShoppingBag className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
-                  <div className="ml-2 sm:ml-3">
-                    <h2 className="text-sm sm:text-base font-semibold text-gray-900">Today's Orders</h2>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-700">{todayOrders.length}</p>
-                </div>
-              </div>
-                <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-400 transform transition-transform ${showTodayOrders ? 'rotate-180' : ''}`} />
-            </div>
-          </motion.div>
-
-          {/* Completed Orders */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            onClick={() => setShowCompletedOrders(!showCompletedOrders)}
-              className="bg-white p-3 sm:p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                  <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
-                  <div className="ml-2 sm:ml-3">
-                    <h2 className="text-sm sm:text-base font-semibold text-gray-900">Completed</h2>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-700">{completedOrders.length}</p>
-                </div>
-              </div>
-                <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-400 transform transition-transform ${showCompletedOrders ? 'rotate-180' : ''}`} />
-            </div>
-          </motion.div>
-        </div>
-
-          {/* Revenue Stats - Single view with period selector */}
-          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-3 sm:mb-6">
-            <div className="flex flex-col space-y-3">
-              {/* Period Selector */}
-              <div className="flex justify-center p-1 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-3 gap-1 w-full max-w-md">
-                  <button
-                    onClick={() => setSelectedRevenuePeriod('daily')}
-                    className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                      selectedRevenuePeriod === 'daily'
-                        ? 'bg-red-500 text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    Daily
-                  </button>
-                  <button
-                    onClick={() => setSelectedRevenuePeriod('weekly')}
-                    className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                      selectedRevenuePeriod === 'weekly'
-                        ? 'bg-red-500 text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    Weekly
-                  </button>
-                  <button
-                    onClick={() => setSelectedRevenuePeriod('monthly')}
-                    className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                      selectedRevenuePeriod === 'monthly'
-                        ? 'bg-red-500 text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    Monthly
-                  </button>
-                </div>
-              </div>
-
-              {/* Revenue Display */}
+            {/* Stats Cards - Responsive grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-6">
+              {/* Total Items */}
               <motion.div
-                key={selectedRevenuePeriod}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className="bg-white p-4 rounded-lg"
+                className="bg-white p-3 sm:p-4 rounded-lg shadow-md"
+              >
+                <div className="flex items-center">
+                  <Package className="h-6 w-6 sm:h-8 sm:w-8 text-red-500" />
+                  <div className="ml-2 sm:ml-3">
+                    <h2 className="text-sm sm:text-base font-semibold text-gray-900">Total Items</h2>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-700">{totalItems}</p>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Total Orders */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white p-3 sm:p-4 rounded-lg shadow-md"
+              >
+                <div className="flex items-center">
+                  <ShoppingBag className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
+                  <div className="ml-2 sm:ml-3">
+                    <h2 className="text-sm sm:text-base font-semibold text-gray-900">Total Orders</h2>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-700">{totalOrders}</p>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Today's Orders */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={() => setShowTodayOrders(!showTodayOrders)}
+                className="bg-white p-3 sm:p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">
-                      {selectedRevenuePeriod.charAt(0).toUpperCase() + selectedRevenuePeriod.slice(1)} Revenue
-                    </h2>
-                    <p className="text-2xl sm:text-3xl font-bold text-gray-700 mt-1">
-                      ₹{revenueStats[selectedRevenuePeriod].amount.toLocaleString()}
-                    </p>
-                    <div className="flex items-center mt-2">
-                      <span className={`text-sm ${
-                        revenueStats[selectedRevenuePeriod].change > 0 
-                          ? 'text-green-600' 
-                          : 'text-red-600'
-                      }`}>
-                        {revenueStats[selectedRevenuePeriod].change > 0 
-                          ? <ArrowUp className="h-4 w-4 inline mr-1" /> 
-                          : <ArrowDown className="h-4 w-4 inline mr-1" />
-                        }
-                        {revenueStats[selectedRevenuePeriod].change.toFixed(1)}%
-                      </span>
-                      <span className="text-xs sm:text-sm text-gray-500 ml-2">
-                        vs {selectedRevenuePeriod === 'daily' ? 'yesterday' : 
-                            selectedRevenuePeriod === 'weekly' ? 'last week' : 'last month'}
-                      </span>
+                  <div className="flex items-center">
+                    <ShoppingBag className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
+                    <div className="ml-2 sm:ml-3">
+                      <h2 className="text-sm sm:text-base font-semibold text-gray-900">Today's Orders</h2>
+                      <p className="text-lg sm:text-2xl font-bold text-gray-700">{orders.today.length}</p>
                     </div>
                   </div>
-                  <div className={`p-3 rounded-full ${
-                    selectedRevenuePeriod === 'daily' ? 'bg-green-100' :
-                    selectedRevenuePeriod === 'weekly' ? 'bg-blue-100' : 'bg-purple-100'
-                  }`}>
-                    <DollarSign className={`h-6 w-6 sm:h-8 sm:w-8 ${
-                      selectedRevenuePeriod === 'daily' ? 'text-green-500' :
-                      selectedRevenuePeriod === 'weekly' ? 'text-blue-500' : 'text-purple-500'
-                    }`} />
+                  <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-400 transform transition-transform ${showTodayOrders ? 'rotate-180' : ''}`} />
+                </div>
+              </motion.div>
+
+              {/* Completed Orders */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={() => setShowCompletedOrders(!showCompletedOrders)}
+                className="bg-white p-3 sm:p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-50"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
+                    <div className="ml-2 sm:ml-3">
+                      <h2 className="text-sm sm:text-base font-semibold text-gray-900">Completed</h2>
+                      <p className="text-lg sm:text-2xl font-bold text-gray-700">{orders.completed.length}</p>
+                    </div>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-400 transform transition-transform ${showCompletedOrders ? 'rotate-180' : ''}`} />
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Revenue Stats - Single view with period selector */}
+            <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-3 sm:mb-6">
+              <div className="flex flex-col space-y-3">
+                {/* Period Selector */}
+                <div className="flex justify-center p-1 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-3 gap-1 w-full max-w-md">
+                    <button
+                      onClick={() => setSelectedRevenuePeriod('daily')}
+                      className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                        selectedRevenuePeriod === 'daily'
+                          ? 'bg-red-500 text-white'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      Daily
+                    </button>
+                    <button
+                      onClick={() => setSelectedRevenuePeriod('weekly')}
+                      className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                        selectedRevenuePeriod === 'weekly'
+                          ? 'bg-red-500 text-white'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      Weekly
+                    </button>
+                    <button
+                      onClick={() => setSelectedRevenuePeriod('monthly')}
+                      className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                        selectedRevenuePeriod === 'monthly'
+                          ? 'bg-red-500 text-white'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      Monthly
+                    </button>
                   </div>
                 </div>
 
-                {/* Additional Stats */}
-                <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500">Orders</p>
-                    <p className="text-lg sm:text-xl font-semibold mt-1">
-                      {selectedRevenuePeriod === 'daily' 
-                        ? todayOrders.length
-                        : selectedRevenuePeriod === 'weekly'
-                        ? completedOrders.filter(order => {
-                            const orderDate = order.createdAt.toDate();
-                            const weekAgo = new Date();
-                            weekAgo.setDate(weekAgo.getDate() - 7);
-                            return orderDate >= weekAgo;
-                          }).length
-                        : completedOrders.filter(order => {
-                            const orderDate = order.createdAt.toDate();
-                            const monthAgo = new Date();
-                            monthAgo.setMonth(monthAgo.getMonth() - 1);
-                            return orderDate >= monthAgo;
-                          }).length
-                      }
-                    </p>
+                {/* Revenue Display */}
+                <motion.div
+                  key={selectedRevenuePeriod}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-white p-4 rounded-lg"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                        {selectedRevenuePeriod.charAt(0).toUpperCase() + selectedRevenuePeriod.slice(1)} Revenue
+                      </h2>
+                      <p className="text-2xl sm:text-3xl font-bold text-gray-700 mt-1">
+                        ₹{revenueStats[selectedRevenuePeriod].amount.toLocaleString()}
+                      </p>
+                      <div className="flex items-center mt-2">
+                        <span className={`text-sm ${
+                          revenueStats[selectedRevenuePeriod].change > 0 
+                            ? 'text-green-600' 
+                            : 'text-red-600'
+                        }`}>
+                          {revenueStats[selectedRevenuePeriod].change > 0 
+                            ? <ArrowUp className="h-4 w-4 inline mr-1" /> 
+                            : <ArrowDown className="h-4 w-4 inline mr-1" />
+                          }
+                          {revenueStats[selectedRevenuePeriod].change.toFixed(1)}%
+                        </span>
+                        <span className="text-xs sm:text-sm text-gray-500 ml-2">
+                          vs {selectedRevenuePeriod === 'daily' ? 'yesterday' : 
+                              selectedRevenuePeriod === 'weekly' ? 'last week' : 'last month'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`p-3 rounded-full ${
+                      selectedRevenuePeriod === 'daily' ? 'bg-green-100' :
+                      selectedRevenuePeriod === 'weekly' ? 'bg-blue-100' : 'bg-purple-100'
+                    }`}>
+                      <DollarSign className={`h-6 w-6 sm:h-8 sm:w-8 ${
+                        selectedRevenuePeriod === 'daily' ? 'text-green-500' :
+                        selectedRevenuePeriod === 'weekly' ? 'text-blue-500' : 'text-purple-500'
+                      }`} />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500">Avg. Order Value</p>
-                    <p className="text-lg sm:text-xl font-semibold mt-1">
-                      ₹{(revenueStats[selectedRevenuePeriod].amount / (
-                        selectedRevenuePeriod === 'daily' 
-                          ? Math.max(todayOrders.length, 1)
+
+                  {/* Additional Stats */}
+                  <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-500">Orders</p>
+                      <p className="text-lg sm:text-xl font-semibold mt-1">
+                        {selectedRevenuePeriod === 'daily' 
+                          ? orders.today.length
                           : selectedRevenuePeriod === 'weekly'
-                          ? Math.max(completedOrders.filter(order => {
+                          ? orders.completed.filter(order => {
                               const orderDate = order.createdAt.toDate();
                               const weekAgo = new Date();
                               weekAgo.setDate(weekAgo.getDate() - 7);
                               return orderDate >= weekAgo;
-                            }).length, 1)
-                          : Math.max(completedOrders.filter(order => {
+                            }).length
+                          : orders.completed.filter(order => {
                               const orderDate = order.createdAt.toDate();
                               const monthAgo = new Date();
                               monthAgo.setMonth(monthAgo.getMonth() - 1);
                               return orderDate >= monthAgo;
-                            }).length, 1)
-                      )).toFixed(0)}
-                    </p>
+                            }).length
+                        }
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-500">Avg. Order Value</p>
+                      <p className="text-lg sm:text-xl font-semibold mt-1">
+                        ₹{(revenueStats[selectedRevenuePeriod].amount / (
+                          selectedRevenuePeriod === 'daily' 
+                            ? Math.max(orders.today.length, 1)
+                            : selectedRevenuePeriod === 'weekly'
+                            ? Math.max(orders.completed.filter(order => {
+                                const orderDate = order.createdAt.toDate();
+                                const weekAgo = new Date();
+                                weekAgo.setDate(weekAgo.getDate() - 7);
+                                return orderDate >= weekAgo;
+                              }).length, 1)
+                            : Math.max(orders.completed.filter(order => {
+                                const orderDate = order.createdAt.toDate();
+                                const monthAgo = new Date();
+                                monthAgo.setMonth(monthAgo.getMonth() - 1);
+                                return orderDate >= monthAgo;
+                              }).length, 1)
+                        )).toFixed(0)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-
-          {/* Orders Lists - Better mobile spacing */}
-        {showTodayOrders && renderTodayOrders()}
-        {showCompletedOrders && renderCompletedOrders()}
-
-          {/* Menu Management Section */}
-          <div className="bg-white rounded-lg shadow-md p-2 sm:p-4">
-            <div className="flex flex-col gap-2 sm:gap-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h2 className="text-base sm:text-lg font-semibold">Menu Items ({filteredMenuItems.length})</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleResetAllAvailability}
-                  disabled={isLoading}
-                    className="flex-1 sm:flex-none px-3 py-1.5 bg-green-500 text-white text-xs sm:text-sm rounded-md hover:bg-green-600 disabled:opacity-50"
-                >
-                  Reset All
-                </button>
-                <button
-                  onClick={() => setIsAddingItem(true)}
-                    className="flex-1 sm:flex-none px-3 py-1.5 bg-red-500 text-white text-xs sm:text-sm rounded-md hover:bg-red-600"
-                >
-                  Add Item
-                </button>
+                </motion.div>
               </div>
             </div>
-            
-            <input
-              type="text"
-              placeholder="Search items..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm border rounded-md"
-            />
-          </div>
 
-            <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
-              {renderMenuItems()}
-          </div>
+            {/* Orders Lists - Better mobile spacing */}
+            {showTodayOrders && renderTodayOrders()}
+            {showCompletedOrders && renderCompletedOrders()}
 
-          {filteredMenuItems.length > ITEMS_PER_PAGE && (
-            <button
-              onClick={() => setShowAllItems(!showAllItems)}
-                className="mt-3 sm:mt-4 w-full py-2 text-xs sm:text-sm text-red-500 hover:bg-red-50 rounded-md"
-            >
-              {showAllItems ? (
-                <span className="flex items-center justify-center">
-                    Show Less <ChevronUp className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                </span>
-              ) : (
-                <span className="flex items-center justify-center">
-                    Show More ({filteredMenuItems.length - ITEMS_PER_PAGE} items) <ChevronDown className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* Add/Edit Item Modal */}
-          {(isAddingItem || editingItem) && (
-              <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-lg p-3 sm:p-4 w-full max-w-md mx-2 sm:mx-4">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">
-                  {editingItem ? 'Edit Item' : 'Add New Item'}
-                </h3>
-                
-                  <div className="space-y-2 sm:space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Item name"
-                    value={editingItem ? editingItem.name : newItem.name}
-                    onChange={(e) => editingItem 
-                      ? setEditingItem({ ...editingItem, name: e.target.value })
-                      : setNewItem({ ...newItem, name: e.target.value })
-                    }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md"
-                  />
-                  
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      placeholder="Price"
-                      value={editingItem ? editingItem.price : newItem.price}
-                      onChange={(e) => editingItem
-                        ? setEditingItem({ ...editingItem, price: Number(e.target.value) })
-                        : setNewItem({ ...newItem, price: Number(e.target.value) })
-                      }
-                        className="w-1/2 px-3 py-1.5 text-xs sm:text-sm border rounded-md"
-                    />
-                    
-                    <input
-                      type="text"
-                      placeholder="Category"
-                      value={editingItem ? editingItem.category : newItem.category}
-                      onChange={(e) => editingItem
-                        ? setEditingItem({ ...editingItem, category: e.target.value })
-                        : setNewItem({ ...newItem, category: e.target.value })
-                      }
-                        className="w-1/2 px-3 py-1.5 text-xs sm:text-sm border rounded-md"
-                    />
-                  </div>
-                  
-                  <input
-                    type="text"
-                    placeholder="Image URL"
-                    value={editingItem ? editingItem.image : newItem.image}
-                    onChange={(e) => editingItem
-                      ? setEditingItem({ ...editingItem, image: e.target.value })
-                      : setNewItem({ ...newItem, image: e.target.value })
-                    }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md"
-                  />
-                  
-                  <textarea
-                    placeholder="Description"
-                    value={editingItem ? editingItem.description : newItem.description}
-                    onChange={(e) => editingItem
-                      ? setEditingItem({ ...editingItem, description: e.target.value })
-                      : setNewItem({ ...newItem, description: e.target.value })
-                    }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md h-16 sm:h-20"
-                  />
-                </div>
-
-                  <div className="flex justify-end gap-2 mt-3 sm:mt-4">
-                  <button
-                    onClick={() => {
-                      setIsAddingItem(false);
-                      setEditingItem(null);
-                    }}
-                      className="px-3 py-1.5 text-xs sm:text-sm border rounded-md hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                      onClick={handleItemSubmit}
-                      className="px-3 py-1.5 text-xs sm:text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
-                  >
-                    {editingItem ? 'Update' : 'Add'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Category Availability Controls */}
-        <div className="mb-8 bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Category Availability</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {categories.map(category => (
-              <div key={category} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">{category}</span>
-                <button
-                  onClick={() => toggleCategoryAvailability(category)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
-                    categoryAvailability[category] ? 'bg-green-500' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      categoryAvailability[category] ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Messages Section - Better mobile layout */}
-        {showMessages && (
-          <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mt-6 md:mt-8">
-            <h3 className="text-lg md:text-xl font-semibold mb-4">Contact Messages</h3>
-            {messages.length === 0 ? (
-              <p className="text-gray-500 text-sm md:text-base">No messages found</p>
-            ) : (
-              <div className="space-y-3 md:space-y-4">
-                {messages.map((message) => (
-                  <div 
-                    key={message.id} 
-                    className={`border rounded-lg p-3 md:p-4 ${
-                      message.status === 'unread' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
-                    }`}
-                  >
-                    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2 md:gap-0 mb-2">
-                      <div>
-                        <h4 className="font-semibold text-sm md:text-base">{message.name}</h4>
-                        <p className="text-xs md:text-sm text-gray-600">{message.email}</p>
-                        <p className="text-xs md:text-sm text-gray-600">{message.phone}</p>
-                      </div>
-                      <div className="text-left md:text-right">
-                        <p className="font-semibold text-sm md:text-base">{message.subject}</p>
-                        <p className="text-xs text-gray-500">
-                          {message.createdAt?.toDate().toLocaleString()}
-                        </p>
-                      </div>
-
-                    </div>
-                    <div className="text-xs md:text-sm text-gray-600 mb-2 p-2 md:p-3 bg-gray-50 rounded">
-                      {message.message}
-                    </div>
-                    {message.status === 'unread' && (
-                      <button
-                        onClick={() => handleMarkMessageAsRead(message.id)}
-                        className="text-xs md:text-sm bg-yellow-500 text-white py-1 px-2 md:px-3 rounded-md hover:bg-yellow-600"
-                      >
-                        Mark as Read
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Offers Section */}
-        <div className="bg-white rounded-lg shadow-md p-6 mt-8">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <h2 className="text-xl font-semibold">Manage Offers</h2>
-            <button
-              onClick={() => setIsAddingOffer(true)}
-              className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 flex items-center gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add New Offer
-            </button>
-          </div>
-
-          {/* Offers List */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {offers.map((offer) => (
-              <div key={offer.id} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                {/* Offer Image */}
-                <div className="relative h-48 w-full">
-                  {offer.image ? (
-                    <img
-                      src={offer.image}
-                      alt={offer.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                      <Package className="h-12 w-12 text-gray-400" />
-                    </div>
-                  )}
-                  <div className="absolute top-2 right-2">
+            {/* Menu Management Section */}
+            <div className="bg-white rounded-lg shadow-md p-2 sm:p-4">
+              <div className="flex flex-col gap-2 sm:gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h2 className="text-base sm:text-lg font-semibold">Menu Items ({filteredMenuItems.length})</h2>
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleToggleOfferStatus(offer.id, offer.isActive)}
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        offer.isActive ? 'bg-green-500' : 'bg-gray-500'
-                      } text-white`}
+                      onClick={handleResetAllAvailability}
+                      disabled={isLoading}
+                      className="flex-1 sm:flex-none px-3 py-1.5 bg-green-500 text-white text-xs sm:text-sm rounded-md hover:bg-green-600 disabled:opacity-50"
                     >
-                      {offer.isActive ? 'Active' : 'Inactive'}
+                      Reset All
+                    </button>
+                    <button
+                      onClick={() => setIsAddingItem(true)}
+                      className="flex-1 sm:flex-none px-3 py-1.5 bg-red-500 text-white text-xs sm:text-sm rounded-md hover:bg-red-600"
+                    >
+                      Add Item
                     </button>
                   </div>
                 </div>
-
-                {/* Offer Content */}
-                <div className="p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold text-lg">{offer.title}</h3>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setEditingOffer(offer)}
-                        className="text-blue-500 hover:text-blue-600"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteOffer(offer.id)}
-                        className="text-red-500 hover:text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <p className="text-gray-600 text-sm mb-3">{offer.description}</p>
-                  
-                  <div className="flex items-center gap-2 mb-2">
-                    {offer.type === 'discount' && (
-                      <span className="bg-red-100 text-red-600 px-2 py-1 rounded-full text-xs font-medium">
-                        {offer.discountPercentage}% OFF
-                      </span>
-                    )}
-                    {offer.type === 'buy_one_get_one' && (
-                      <span className="bg-green-100 text-green-600 px-2 py-1 rounded-full text-xs font-medium">
-                        Buy One Get One
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Calendar className="h-4 w-4" />
-                    <span>Valid until: {offer.validUntil.toLocaleDateString()}</span>
-                  </div>
-                </div>
+                
+                <input
+                  type="text"
+                  placeholder="Search items..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm border rounded-md"
+                />
               </div>
-            ))}
-          </div>
+            </div>
 
-          {/* Add/Edit Offer Modal */}
-          {(isAddingOffer || editingOffer) && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-semibold">
-                    {editingOffer ? 'Edit Offer' : 'Add New Offer'}
+            <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
+              {renderMenuItems()}
+            </div>
+
+            {filteredMenuItems.length > ITEMS_PER_PAGE && (
+              <button
+                onClick={() => setShowAllItems(!showAllItems)}
+                className="mt-3 sm:mt-4 w-full py-2 text-xs sm:text-sm text-red-500 hover:bg-red-50 rounded-md"
+              >
+                {showAllItems ? (
+                  <span className="flex items-center justify-center">
+                    Show Less <ChevronUp className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center">
+                    Show More ({filteredMenuItems.length - ITEMS_PER_PAGE} items) <ChevronDown className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Add/Edit Item Modal */}
+            {(isAddingItem || editingItem) && (
+              <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg p-3 sm:p-4 w-full max-w-md mx-2 sm:mx-4">
+                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">
+                    {editingItem ? 'Edit Item' : 'Add New Item'}
                   </h3>
-                  <button
-                    onClick={() => {
-                      setIsAddingOffer(false);
-                      setEditingOffer(null);
-                    }}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    <XCircle className="h-5 w-5" />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  {/* Menu Item Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Menu Item</label>
-                    <select
-                      value={editingOffer ? editingOffer.menuItemId : newOffer.menuItemId}
-                      onChange={(e) => {
-                        const selectedItem = menuItems.find(item => item.id === e.target.value);
-                        if (selectedItem) {
-                          const updatedOffer = {
-                            ...(editingOffer || newOffer),
-                            menuItemId: selectedItem.id,
-                            menuItemName: selectedItem.name,
-                            originalPrice: selectedItem.price,
-                            image: selectedItem.image,
-                            title: `${selectedItem.name} Offer`, // Auto-generate offer title
-                          };
-                          editingOffer 
-                            ? setEditingOffer(updatedOffer as Offer)
-                            : setNewOffer(updatedOffer);
-                        }
-                      }}
-                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                    >
-                      <option value="">Select a menu item</option>
-                      {menuItems.map(item => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} - ₹{item.price}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  
+                  <div className="space-y-2 sm:space-y-3">
                     <input
                       type="text"
-                      value={editingOffer ? editingOffer.title : newOffer.title}
-                      onChange={(e) => editingOffer
-                        ? setEditingOffer({ ...editingOffer, title: e.target.value })
-                        : setNewOffer({ ...newOffer, title: e.target.value })
+                      placeholder="Item name"
+                      value={editingItem ? editingItem.name : newItem.name}
+                      onChange={(e) => editingItem 
+                        ? setEditingItem({ ...editingItem, name: e.target.value })
+                        : setNewItem({ ...newItem, name: e.target.value })
                       }
-                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                      placeholder="Enter offer title"
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                    <textarea
-                      value={editingOffer ? editingOffer.description : newOffer.description}
-                      onChange={(e) => editingOffer
-                        ? setEditingOffer({ ...editingOffer, description: e.target.value })
-                        : setNewOffer({ ...newOffer, description: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                      rows={3}
-                      placeholder="Enter offer description"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Offer Type</label>
-                    <select
-                      value={editingOffer ? editingOffer.type : newOffer.type}
-                      onChange={(e) => {
-                        const type = e.target.value as 'discount' | 'buy_one_get_one';
-                        const currentOffer = editingOffer || newOffer;
-                        const updatedOffer = {
-                          ...currentOffer,
-                          type,
-                          offerPrice: type === 'discount' 
-                            ? currentOffer.originalPrice * (1 - (currentOffer.discountPercentage / 100))
-                            : currentOffer.originalPrice
-                        };
-                        editingOffer 
-                          ? setEditingOffer(updatedOffer as Offer)
-                          : setNewOffer(updatedOffer);
-                      }}
-                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                    >
-                      <option value="discount">Discount</option>
-                      <option value="buy_one_get_one">Buy One Get One</option>
-                    </select>
-                  </div>
-
-                  {(editingOffer ? editingOffer.type : newOffer.type) === 'discount' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Discount Percentage</label>
-                      <div className="flex items-center gap-4">
-                        <input
-                          type="number"
-                          value={editingOffer ? editingOffer.discountPercentage : newOffer.discountPercentage}
-                          onChange={(e) => {
-                            const percentage = Number(e.target.value);
-                            const currentOffer = editingOffer || newOffer;
-                            const updatedOffer = {
-                              ...currentOffer,
-                              discountPercentage: percentage,
-                              offerPrice: currentOffer.originalPrice * (1 - (percentage / 100))
-                            };
-                            editingOffer 
-                              ? setEditingOffer(updatedOffer as Offer)
-                              : setNewOffer(updatedOffer);
-                          }}
-                          className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                          placeholder="Enter discount percentage"
-                          min="0"
-                          max="100"
-                        />
-                        <div className="text-sm text-gray-500">
-                          <p>Original: ₹{editingOffer ? editingOffer.originalPrice : newOffer.originalPrice}</p>
-                          <p>Offer: ₹{editingOffer ? editingOffer.offerPrice : newOffer.offerPrice}</p>
-                        </div>
-                      </div>
+                    
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        placeholder="Price"
+                        value={editingItem ? editingItem.price : newItem.price}
+                        onChange={(e) => editingItem
+                          ? setEditingItem({ ...editingItem, price: Number(e.target.value) })
+                          : setNewItem({ ...newItem, price: Number(e.target.value) })
+                        }
+                        className="w-1/2 px-3 py-1.5 text-xs sm:text-sm border rounded-md"
+                      />
+                      
+                      <input
+                        type="text"
+                        placeholder="Category"
+                        value={editingItem ? editingItem.category : newItem.category}
+                        onChange={(e) => editingItem
+                          ? setEditingItem({ ...editingItem, category: e.target.value })
+                          : setNewItem({ ...newItem, category: e.target.value })
+                        }
+                        className="w-1/2 px-3 py-1.5 text-xs sm:text-sm border rounded-md"
+                      />
                     </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until</label>
+                    
                     <input
-                      type="datetime-local"
-                      value={(editingOffer ? editingOffer.validUntil : newOffer.validUntil)
-                        .toISOString()
-                        .slice(0, 16)}
-                      onChange={(e) => editingOffer
-                        ? setEditingOffer({ ...editingOffer, validUntil: new Date(e.target.value) })
-                        : setNewOffer({ ...newOffer, validUntil: new Date(e.target.value) })
+                      type="text"
+                      placeholder="Image URL"
+                      value={editingItem ? editingItem.image : newItem.image}
+                      onChange={(e) => editingItem
+                        ? setEditingItem({ ...editingItem, image: e.target.value })
+                        : setNewItem({ ...newItem, image: e.target.value })
                       }
-                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md"
+                    />
+                    
+                    <textarea
+                      placeholder="Description"
+                      value={editingItem ? editingItem.description : newItem.description}
+                      onChange={(e) => editingItem
+                        ? setEditingItem({ ...editingItem, description: e.target.value })
+                        : setNewItem({ ...newItem, description: e.target.value })
+                      }
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm border rounded-md h-16 sm:h-20"
                     />
                   </div>
 
-                  {/* Preview Section */}
-                  {(editingOffer?.menuItemId || newOffer.menuItemId) && (
-                    <div className="border rounded-lg p-4 bg-gray-50">
-                      <h4 className="font-medium mb-2">Preview</h4>
-                      <div className="flex items-center gap-4">
-                        <img
-                          src={editingOffer?.image || newOffer.image}
-                          alt="Menu item"
-                          className="w-20 h-20 object-cover rounded-lg"
-                        />
-                        <div>
-                          <p className="font-medium">{editingOffer?.menuItemName || newOffer.menuItemName}</p>
-                          <p className="text-sm text-gray-500">Original Price: ₹{editingOffer?.originalPrice || newOffer.originalPrice}</p>
-                          <p className="text-sm text-green-600">Offer Price: ₹{editingOffer?.offerPrice || newOffer.offerPrice}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-end gap-3 pt-4">
+                  <div className="flex justify-end gap-2 mt-3 sm:mt-4">
                     <button
                       onClick={() => {
-                        setIsAddingOffer(false);
-                        setEditingOffer(null);
+                        setIsAddingItem(false);
+                        setEditingItem(null);
                       }}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                      className="px-3 py-1.5 text-xs sm:text-sm border rounded-md hover:bg-gray-50"
                     >
                       Cancel
                     </button>
                     <button
-                        onClick={handleOfferSubmit}
-                      className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleItemSubmit}
+                      className="px-3 py-1.5 text-xs sm:text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
                     >
-                        {editingOffer ? 'Update Offer' : 'Add Offer'}
+                      {editingItem ? 'Update' : 'Add'}
                     </button>
                   </div>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Category Availability Controls */}
+          <div className="mb-8 bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Category Availability</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {categories.map(category => (
+                <div key={category} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">{category}</span>
+                  <button
+                    onClick={() => toggleCategoryAvailability(category)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
+                      categoryAvailability[category] ? 'bg-green-500' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        categoryAvailability[category] ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Messages Section - Better mobile layout */}
+          {showMessages && (
+            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mt-6 md:mt-8">
+              <h3 className="text-lg md:text-xl font-semibold mb-4">Contact Messages</h3>
+              {messages.length === 0 ? (
+                <p className="text-gray-500 text-sm md:text-base">No messages found</p>
+              ) : (
+                <div className="space-y-3 md:space-y-4">
+                  {messages.map((message) => (
+                    <div 
+                      key={message.id} 
+                      className={`border rounded-lg p-3 md:p-4 ${
+                        message.status === 'unread' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2 md:gap-0 mb-2">
+                        <div>
+                          <h4 className="font-semibold text-sm md:text-base">{message.name}</h4>
+                          <p className="text-xs md:text-sm text-gray-600">{message.email}</p>
+                          <p className="text-xs md:text-sm text-gray-600">{message.phone}</p>
+                        </div>
+                        <div className="text-left md:text-right">
+                          <p className="font-semibold text-sm md:text-base">{message.subject}</p>
+                          <p className="text-xs text-gray-500">
+                            {message.createdAt?.toDate().toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-xs md:text-sm text-gray-600 mb-2 p-2 md:p-3 bg-gray-50 rounded">
+                        {message.message}
+                      </div>
+                      {message.status === 'unread' && (
+                        <button
+                          onClick={() => handleMarkMessageAsRead(message.id)}
+                          className="text-xs md:text-sm bg-yellow-500 text-white py-1 px-2 md:px-3 rounded-md hover:bg-yellow-600"
+                        >
+                          Mark as Read
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* New Order Notification */}
-        {newOrderNotification.show && newOrderNotification.order && (
-          <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg border border-red-200 animate-bounce">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-red-600">New Order Received!</h3>
-                <p className="text-sm text-gray-600">
-                  Order ID: {newOrderNotification.order.id}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Amount: ₹{newOrderNotification.order.totalAmount}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Payment: {newOrderNotification.order.paymentMethod}
-                </p>
+          {/* New Order Notification */}
+          {newOrderNotification.show && newOrderNotification.order && (
+            <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg border border-red-200 animate-bounce">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-red-600">New Order Received!</h3>
+                  <p className="text-sm text-gray-600">
+                    Order ID: {newOrderNotification.order.id}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Amount: ₹{newOrderNotification.order.totalAmount}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Payment: {newOrderNotification.order.paymentMethod}
+                  </p>
+                </div>
+                <div className="flex flex-col items-center ml-4">
+                  <a
+                    href={`tel:${newOrderNotification.order.userPhone}`}
+                    className="bg-green-500 text-white p-2 rounded-full hover:bg-green-600"
+                    title="Call Customer"
+                  >
+                    <Phone size={20} />
+                  </a>
+                  <span className="text-xs text-gray-500 mt-1">Call</span>
+                </div>
               </div>
-              <div className="flex flex-col items-center ml-4">
-                <a
-                  href={`tel:${newOrderNotification.order.userPhone}`}
-                  className="bg-green-500 text-white p-2 rounded-full hover:bg-green-600"
-                  title="Call Customer"
-                >
-                  <Phone size={20} />
-                </a>
-                <span className="text-xs text-gray-500 mt-1">Call</span>
-              </div>
+              <button
+                onClick={() => setNewOrderNotification({ show: false, order: null })}
+                className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
             </div>
-            <button
-              onClick={() => setNewOrderNotification({ show: false, order: null })}
-              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
-            >
-              ×
-            </button>
-          </div>
-        )}
+          )}
         </div>
       </div>
     </div>
   );
-};export default Dashboard;
+};
+
+export default Dashboard;
 
