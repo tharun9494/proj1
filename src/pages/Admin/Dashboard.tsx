@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { 
   ShoppingBag, 
@@ -141,7 +141,6 @@ type Unsubscribe = () => void;
 
 const Dashboard = () => {
   const { isAdmin } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
   const [totalItems, setTotalItems] = useState(0);
   const [orders, setOrders] = useState<{
     today: Order[];
@@ -153,7 +152,6 @@ const Dashboard = () => {
     past: []
   });
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [showTodayOrders, setShowTodayOrders] = useState(false);
   const [showCompletedOrders, setShowCompletedOrders] = useState(false);
@@ -169,6 +167,7 @@ const Dashboard = () => {
     image: ''
   });
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -205,6 +204,7 @@ const Dashboard = () => {
   });
   const [totalOrders, setTotalOrders] = useState(0);
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const ITEMS_PER_PAGE = 5;
@@ -245,119 +245,33 @@ const Dashboard = () => {
     'Drinks'
   ];
 
-  // Optimize event handlers with useCallback
-  const handleUserInteraction = useCallback(() => {
-    setIsSoundEnabled(true);
-    if (audioRef.current) {
-      audioRef.current.volume = 0;
-      audioRef.current.play().catch(() => {});
-    }
-  }, []);
-
-  const handleToggleRestaurantStatus = useCallback(async () => {
-    try {
-      const statusRef = doc(db, 'restaurant', 'status');
-      await updateDoc(statusRef, {
-        isOpen: !restaurantStatus,
-        lastUpdated: serverTimestamp()
-      });
-      setRestaurantStatus(!restaurantStatus);
-      toast.success(`Restaurant is now ${!restaurantStatus ? 'open' : 'closed'}`);
-    } catch (error) {
-      console.error('Error toggling restaurant status:', error);
-      toast.error('Failed to update restaurant status');
-    }
-  }, [restaurantStatus]);
-
-  const handleUpdateOrderStatus = useCallback(async (orderId: string, newStatus: string) => {
-    try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, {
-        status: newStatus,
-        updatedAt: serverTimestamp()
-      });
-      toast.success('Order status updated successfully');
-    } catch (error) {
-      console.error('Error updating order status:', error);
-      toast.error('Failed to update order status');
-    }
-  }, []);
-
-  const handleToggleAvailability = useCallback(async (itemId: string, currentStatus: boolean | undefined) => {
-    try {
-      const itemRef = doc(db, 'menu', itemId);
-      await updateDoc(itemRef, {
-        isAvailable: !currentStatus
-      });
-      setMenuItems(prevItems => 
-        prevItems.map(item => 
-          item.id === itemId ? { ...item, isAvailable: !currentStatus } : item
-        )
-      );
-      toast.success(`Item ${!currentStatus ? 'made available' : 'made unavailable'}`);
-    } catch (error) {
-      console.error('Error toggling item availability:', error);
-      toast.error('Failed to update item availability');
-    }
-  }, []);
-
-  const handleDeleteItem = useCallback(async (itemId: string) => {
-    try {
-      await deleteDoc(doc(db, 'menu', itemId));
-      setMenuItems(prevItems => prevItems.filter(item => item.id !== itemId));
-      toast.success('Item deleted successfully');
-    } catch (error) {
-      console.error('Error deleting item:', error);
-      toast.error('Failed to delete item');
-    }
-  }, []);
-
-  const handleUpdateItem = useCallback(async (
-    itemIdOrEvent: string | React.MouseEvent<HTMLButtonElement>,
-    updatedData?: Partial<MenuItem>
-  ) => {
-    try {
-      const itemId = typeof itemIdOrEvent === 'string' ? itemIdOrEvent : itemIdOrEvent.currentTarget.dataset.id;
-      if (!itemId) return;
-
-      const itemRef = doc(db, 'menu', itemId);
-      await updateDoc(itemRef, {
-        ...updatedData,
-        updatedAt: serverTimestamp()
-      });
-
-      setMenuItems(prevItems => 
-        prevItems.map(item => 
-          item.id === itemId ? { ...item, ...updatedData } : item
-        )
-      );
-      toast.success('Item updated successfully');
-    } catch (error) {
-      console.error('Error updating item:', error);
-      toast.error('Failed to update item');
-    }
-  }, []);
-
-  // Optimize useEffect hooks
+  // Initialize dashboard data
   useEffect(() => {
-    if (!isAdmin) return;
-
     const initializeDashboard = async () => {
       try {
         setIsLoading(true);
-        // Setup listeners and fetch initial data
-        setupOrdersListener();
-        fetchMessages();
-        // ... rest of initialization
+        if (!isAdmin) return;
+
+        // Setup listeners
+        const unsubOrders = setupOrdersListener();
+        const unsubMessages = fetchMessages();
+        
+        return () => {
+          if (unsubOrders) unsubOrders();
+          if (unsubMessages) unsubMessages();
+        };
       } catch (error) {
         console.error('Error initializing dashboard:', error);
-        toast.error('Failed to initialize dashboard');
+        toast.error('Failed to load dashboard data');
       } finally {
         setIsLoading(false);
       }
     };
 
-    initializeDashboard();
+    const cleanup = initializeDashboard();
+    return () => {
+      if (cleanup) cleanup.then(unsub => unsub && unsub());
+    };
   }, [isAdmin]);
 
   useEffect(() => {
@@ -434,6 +348,19 @@ const Dashboard = () => {
 
   // Handle user interaction to enable sound
   useEffect(() => {
+    const handleUserInteraction = () => {
+      setIsSoundEnabled(true);
+      // Try to play a silent sound to ensure audio context is initialized
+      if (audioRef.current) {
+        audioRef.current.volume = 0;
+        audioRef.current.play().catch(() => {});
+        audioRef.current.volume = 1;
+      }
+      // Remove the event listeners after first interaction
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+
     // Add event listeners for user interaction
     document.addEventListener('click', handleUserInteraction);
     document.addEventListener('keydown', handleUserInteraction);
@@ -442,7 +369,7 @@ const Dashboard = () => {
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
     };
-  }, [handleUserInteraction]);
+  }, []);
 
   useEffect(() => {
     // Update orders listener to play sound only after user interaction
@@ -494,375 +421,180 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Update the useEffect for total orders calculation
-  useEffect(() => {
-    // Combine orders and remove duplicates
-    const allOrders = [...orders.today, ...orders.completed].filter((order, index, self) =>
-      index === self.findIndex((o) => o.id === order.id)
+  // Fix orders listener and stats calculation
+  const setupOrdersListener = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const ordersQuery = query(
+      collection(db, 'orders'),
+      orderBy('createdAt', 'desc')
     );
-    
-    setTotalOrders(allOrders.length);
-  }, [orders.today, orders.completed]);
 
-  // Update the setupOrdersListener function
-  const setupOrdersListener = useCallback(() => {
-    try {
-      // Get the current date
-      const now = new Date();
-      
-      // Set the start of the day to 12 AM (midnight)
-      const todayStart = new Date(now);
-      todayStart.setHours(0, 0, 0, 0);
-      
-      // Set the end of the day to 11:59:59 PM
-      const todayEnd = new Date(now);
-      todayEnd.setHours(23, 59, 59, 999);
+    return onSnapshot(ordersQuery, (snapshot) => {
+      try {
+        const allOrders = snapshot.docs.map(doc => {
+          const data = doc.data();
+          // Calculate total amount from items
+          const items = data.items || [];
+          const totalAmount = items.reduce((sum: number, item: any) => {
+            const price = Number(item.price) || 0;
+            const quantity = Number(item.quantity) || 0;
+            return sum + (price * quantity);
+          }, 0);
 
-      // Query for today's orders
-      const todayOrdersQuery = query(
-        collection(db, 'orders'),
-        where('createdAt', '>=', todayStart),
-        where('createdAt', '<=', todayEnd),
-        orderBy('createdAt', 'desc')
-      );
-
-      // Query for completed orders
-      const completedOrdersQuery = query(
-        collection(db, 'orders'),
-        where('status', '==', 'completed'),
-        orderBy('createdAt', 'desc')
-      );
-
-      // Listen for today's orders
-      const unsubToday = onSnapshot(todayOrdersQuery, (snapshot) => {
-        const todayOrdersList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Order[];
-
-        setOrders(prev => ({
-          ...prev,
-          today: todayOrdersList
-        }));
-
-        // Check for new orders
-        if (todayOrdersList.length > previousOrdersCountRef.current) {
-          // Show notification for new orders
-          toast.success('New order received!', {
-            duration: 3000,
-            position: 'top-right'
+          console.log('Order calculation:', {
+            id: doc.id,
+            items: items,
+            calculatedTotal: totalAmount
           });
-        }
-        previousOrdersCountRef.current = todayOrdersList.length;
-      }, (error) => {
-        console.error('Error fetching today\'s orders:', error);
-        toast.error('Failed to load today\'s orders');
-      });
 
-      // Listen for completed orders
-      const unsubCompleted = onSnapshot(completedOrdersQuery, (snapshot) => {
-        const completedOrdersList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Order[];
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt || serverTimestamp(),
+            totalAmount: totalAmount,
+            status: data.status || 'pending',
+            items: items
+          };
+        }) as Order[];
 
-        setOrders(prev => ({
-          ...prev,
-          completed: completedOrdersList
-        }));
-      }, (error) => {
-        console.error('Error fetching completed orders:', error);
-        toast.error('Failed to load completed orders');
-      });
+        console.log('Processing orders:', allOrders.length);
 
-      return () => {
-        unsubToday();
-        unsubCompleted();
-      };
-    } catch (error) {
-      console.error('Error setting up orders listener:', error);
-      toast.error('Failed to initialize orders listener');
-      return () => {};
-    }
-  }, []);
+        // Update total orders count
+        setTotalOrders(allOrders.length);
 
-  // Calculate revenue statistics
-  const calculateChange = (current: number, previous: number): number => {
-    if (previous === 0) return current === 0 ? 0 : 100;
-    return ((current - previous) / previous) * 100;
+        // Filter today's orders
+        const todayOrdersList = allOrders.filter(order => {
+          if (!order.createdAt) return false;
+          const orderDate = order.createdAt.toDate();
+          return orderDate >= today && order.status !== 'completed';
+        });
+
+        // Filter completed orders
+        const completedOrdersList = allOrders.filter(order => 
+          order.status === 'completed'
+        );
+
+        // Filter past orders
+        const pastOrdersList = allOrders.filter(order => {
+          if (!order.createdAt) return false;
+          const orderDate = order.createdAt.toDate();
+          return orderDate < today && order.status !== 'completed';
+        });
+
+        console.log('Order counts:', {
+          today: todayOrdersList.length,
+          completed: completedOrdersList.length,
+          past: pastOrdersList.length
+        });
+
+        // Update orders state
+        setOrders({
+          today: todayOrdersList,
+          completed: completedOrdersList,
+          past: pastOrdersList
+        });
+
+      } catch (error) {
+        console.error('Error processing orders:', error);
+        toast.error('Failed to process orders data');
+      }
+    });
   };
 
-  const calculateRevenueStats = (orders: Order[]) => {
+  const calculateRevenue = useCallback((orders: Order[]) => {
+    console.log('Calculating revenue for orders:', orders.length);
+    
     const now = new Date();
-    
-    // Today's revenue
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
-    
-    // Yesterday's revenue
-    const yesterdayStart = startOfDay(subDays(now, 1));
-    const yesterdayEnd = endOfDay(subDays(now, 1));
-    
-    // This week's revenue
-    const weekStart = startOfWeek(now);
-    const weekEnd = endOfWeek(now);
-    
-    // Last week's revenue
-    const lastWeekStart = startOfWeek(subWeeks(now, 1));
-    const lastWeekEnd = endOfWeek(subWeeks(now, 1));
-    
-    // This month's revenue
-    const monthStart = startOfMonth(now);
-    const monthEnd = endOfMonth(now);
-    
-    // Last month's revenue
-    const lastMonthStart = startOfMonth(subMonths(now, 1));
-    const lastMonthEnd = endOfMonth(subMonths(now, 1));
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
 
-    let dailyRevenue = 0;
-    let yesterdayRevenue = 0;
-    let weeklyRevenue = 0;
-    let lastWeekRevenue = 0;
-    let monthlyRevenue = 0;
-    let lastMonthRevenue = 0;
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
 
-    // Create a Set to track processed order IDs
-    const processedOrderIds = new Set<string>();
+    const monthAgo = new Date(now);
+    monthAgo.setMonth(monthAgo.getMonth() - 1);
 
-    orders.forEach((order) => {
-      if (!order.createdAt || !order.totalAmount || processedOrderIds.has(order.id)) return;
+    let daily = 0;
+    let weekly = 0;
+    let monthly = 0;
+
+    orders.forEach(order => {
+      if (!order.createdAt) {
+        console.log('Skipping order due to missing createdAt:', order.id);
+        return;
+      }
       
-      processedOrderIds.add(order.id);
       const orderDate = order.createdAt.toDate();
       const amount = Number(order.totalAmount) || 0;
 
-      if (isWithinInterval(orderDate, { start: todayStart, end: todayEnd })) {
-        dailyRevenue += amount;
+      console.log('Processing order:', {
+        id: order.id,
+        date: orderDate,
+        amount: amount,
+        status: order.status
+      });
+
+      if (orderDate >= today) {
+        daily += amount;
+        console.log('Added to daily revenue:', amount);
       }
-      if (isWithinInterval(orderDate, { start: yesterdayStart, end: yesterdayEnd })) {
-        yesterdayRevenue += amount;
+      if (orderDate >= weekAgo) {
+        weekly += amount;
+        console.log('Added to weekly revenue:', amount);
       }
-      if (isWithinInterval(orderDate, { start: weekStart, end: weekEnd })) {
-        weeklyRevenue += amount;
-      }
-      if (isWithinInterval(orderDate, { start: lastWeekStart, end: lastWeekEnd })) {
-        lastWeekRevenue += amount;
-      }
-      if (isWithinInterval(orderDate, { start: monthStart, end: monthEnd })) {
-        monthlyRevenue += amount;
-      }
-      if (isWithinInterval(orderDate, { start: lastMonthStart, end: lastMonthEnd })) {
-        lastMonthRevenue += amount;
+      if (orderDate >= monthAgo) {
+        monthly += amount;
+        console.log('Added to monthly revenue:', amount);
       }
     });
 
-    const newRevenueStats: RevenueStats = {
-      daily: {
-        amount: dailyRevenue,
-        change: calculateChange(dailyRevenue, yesterdayRevenue)
-      },
-      weekly: {
-        amount: weeklyRevenue,
-        change: calculateChange(weeklyRevenue, lastWeekRevenue)
-      },
-      monthly: {
-        amount: monthlyRevenue,
-        change: calculateChange(monthlyRevenue, lastMonthRevenue)
-      }
-    };
+    console.log('Final revenue calculations:', {
+      daily,
+      weekly,
+      monthly
+    });
 
-    setRevenueStats(newRevenueStats);
+    setRevenueStats({
+      daily: { amount: daily, change: 0 },
+      weekly: { amount: weekly, change: 0 },
+      monthly: { amount: monthly, change: 0 }
+    });
+  }, []);
+
+  useEffect(() => {
+    console.log('Orders changed, recalculating revenue');
+    const allOrders = [...orders.today, ...orders.completed, ...orders.past];
+    console.log('Total orders to process:', allOrders.length);
+    calculateRevenue(allOrders);
+  }, [orders.today, orders.completed, orders.past, calculateRevenue]);
+
+  const RevenueCard = ({ title, amount }: { title: string; amount: number }) => {
+    console.log('Rendering RevenueCard:', { title, amount });
+    return (
+      <div className="bg-white p-4 rounded-lg shadow-md">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+            <p className="text-2xl font-bold text-gray-700">₹{amount.toLocaleString()}</p>
+          </div>
+          <DollarSign className="h-8 w-8 text-green-500" />
+        </div>
+      </div>
+    );
   };
 
-  // Update revenue stats when orders change
-  useEffect(() => {
-    // Combine orders and remove duplicates
-    const allOrders = [...orders.today, ...orders.completed].filter((order, index, self) =>
-      index === self.findIndex((o) => o.id === order.id)
-    );
-    
-    if (allOrders.length > 0) {
-      calculateRevenueStats(allOrders);
-    }
-  }, [orders.today, orders.completed]);
-
-  // Revenue Card Component
-  const RevenueCard = ({ title, amount, change, trend }: {
-    title: string;
-    amount: number;
-    change: number;
-    trend: 'up' | 'down';
-  }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white p-4 rounded-lg shadow-md"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          <p className="text-2xl font-bold text-gray-700">₹{amount.toLocaleString()}</p>
-          <div className="flex items-center mt-1">
-            <span className={`text-sm ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-              {trend === 'up' ? <ArrowUp className="h-4 w-4 inline" /> : <ArrowDown className="h-4 w-4 inline" />}
-              {change.toFixed(1)}%
-            </span>
-            <span className="text-sm text-gray-500 ml-2">
-              vs {title.toLowerCase() === 'daily revenue' ? 'yesterday' : 
-                  title.toLowerCase() === 'weekly revenue' ? 'last week' : 'last month'}
-            </span>
-          </div>
-        </div>
-        <DollarSign className={`h-8 w-8 ${
-          title.toLowerCase().includes('daily') ? 'text-green-500' :
-          title.toLowerCase().includes('weekly') ? 'text-blue-500' : 'text-purple-500'
-        }`} />
-      </div>
-    </motion.div>
-  );
-
-  // Optimize rendering functions with useMemo
-  const revenueCards = useMemo(() => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <RevenueCard
-        title="Daily Revenue"
-        amount={revenueStats.daily.amount}
-        change={revenueStats.daily.change}
-        trend={revenueStats.daily.change >= 0 ? 'up' : 'down'}
-      />
-      <RevenueCard
-        title="Weekly Revenue"
-        amount={revenueStats.weekly.amount}
-        change={revenueStats.weekly.change}
-        trend={revenueStats.weekly.change >= 0 ? 'up' : 'down'}
-      />
-      <RevenueCard
-        title="Monthly Revenue"
-        amount={revenueStats.monthly.amount}
-        change={revenueStats.monthly.change}
-        trend={revenueStats.monthly.change >= 0 ? 'up' : 'down'}
-      />
-    </div>
-  ), [revenueStats]);
-
-  const menuItemsList = useMemo(() => {
-    const filteredItems = menuItems.filter(item => 
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
+  const renderRevenueCards = () => {
+    console.log('Current revenue stats:', revenueStats);
     return (
-      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-        {categories.map(category => {
-          const items = filteredItems.filter(item => item.category === category);
-          const isExpanded = expandedCategories[category];
-          const displayedItems = isExpanded ? items : items.slice(0, ITEMS_PER_CATEGORY);
-
-          return (
-            <div key={category} className="bg-white rounded-lg p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold">{category}</h3>
-                  <p className="text-sm text-gray-500">{items.length} items</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleCategoryAvailability(category)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      categoryAvailability[category]
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}
-                  >
-                    {categoryAvailability[category] ? 'Available' : 'Unavailable'}
-                  </button>
-                  <button
-                    onClick={() => setExpandedCategories(prev => ({
-                      ...prev,
-                      [category]: !prev[category]
-                    }))}
-                    className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                  >
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {displayedItems.map(item => (
-                  <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-10 h-10 rounded object-cover"
-                      />
-                      <div>
-                        <h4 className="text-sm font-medium">{item.name}</h4>
-                        <p className="text-xs text-gray-500">₹{item.price}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setEditingItem(item)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleToggleAvailability(item.id, item.isAvailable)}
-                        className={`p-1.5 rounded ${
-                          item.isAvailable 
-                            ? 'text-green-600 hover:bg-green-50' 
-                            : 'text-red-600 hover:bg-red-50'
-                        }`}
-                      >
-                        {item.isAvailable ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteItem(item.id)}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <RevenueCard title="Today's Revenue" amount={revenueStats.daily.amount} />
+        <RevenueCard title="This Week" amount={revenueStats.weekly.amount} />
+        <RevenueCard title="This Month" amount={revenueStats.monthly.amount} />
       </div>
     );
-  }, [menuItems, searchQuery, categories, expandedCategories, categoryAvailability]);
-
-  // Add custom scrollbar styles
-  const customScrollbarStyles = `
-    .custom-scrollbar::-webkit-scrollbar {
-      width: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-      background: #f1f1f1;
-      border-radius: 3px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #888;
-      border-radius: 3px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: #555;
-    }
-  `;
-
-  // Add the styles to the document
-  useEffect(() => {
-    const styleElement = document.createElement('style');
-    styleElement.textContent = customScrollbarStyles;
-    document.head.appendChild(styleElement);
-
-    return () => {
-      document.head.removeChild(styleElement);
-    };
-  }, []);
+  };
 
   const fetchMessages = () => {
     const messagesRef = collection(db, 'messages');
@@ -900,6 +632,72 @@ const Dashboard = () => {
     }
   };
 
+  const handleToggleRestaurantStatus = async () => {
+    try {
+      const restaurantRef = doc(db, 'restaurant', 'status');
+      await updateDoc(restaurantRef, {
+        isOpen: !restaurantStatus
+      });
+      setRestaurantStatus(!restaurantStatus);
+      toast.success(`Restaurant is now ${!restaurantStatus ? 'open' : 'closed'}`);
+    } catch (error) {
+      console.error('Error toggling restaurant status:', error);
+      toast.error('Failed to update restaurant status');
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: 'completed' | 'pending') => {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, {
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      });
+
+      // Update local state to reflect the change immediately
+      setOrders(prevOrders => {
+        const updatedToday = prevOrders.today.map(order => 
+          order.id === orderId ? { ...order, status: newStatus } : order
+        );
+        const updatedCompleted = prevOrders.completed.map(order =>
+          order.id === orderId ? { ...order, status: newStatus } : order
+        );
+
+        // Move order to appropriate list
+        if (newStatus === 'completed') {
+          const orderToMove = updatedToday.find(order => order.id === orderId);
+          if (orderToMove) {
+            return {
+              today: updatedToday.filter(order => order.id !== orderId),
+              completed: [...updatedCompleted, { ...orderToMove, status: newStatus }],
+              past: prevOrders.past
+            };
+          }
+        } else {
+          const orderToMove = updatedCompleted.find(order => order.id === orderId);
+          if (orderToMove) {
+            return {
+              today: [...updatedToday, { ...orderToMove, status: newStatus }],
+              completed: updatedCompleted.filter(order => order.id !== orderId),
+              past: prevOrders.past
+            };
+          }
+        }
+
+        return {
+          today: updatedToday,
+          completed: updatedCompleted,
+          past: prevOrders.past
+        };
+      });
+
+      toast.success('Order status updated successfully');
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      toast.error('Failed to update order status');
+    }
+  };
+
   const handleResetAllAvailability = async () => {
     try {
       const menuRef = collection(db, 'menuItems');
@@ -915,6 +713,60 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error resetting availability:', error);
       toast.error('Failed to reset availability');
+    }
+  };
+
+  const handleToggleAvailability = async (itemId: string, currentStatus: boolean | undefined) => {
+    try {
+      const itemRef = doc(db, 'menuItems', itemId);
+      // If currentStatus is undefined, default to false (making it available)
+      const newStatus = currentStatus === undefined ? true : !currentStatus;
+      await updateDoc(itemRef, {
+        isAvailable: newStatus
+      });
+      toast.success(`Item ${newStatus ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+      console.error('Error toggling availability:', error);
+      toast.error('Failed to toggle availability');
+    }
+  };
+
+  const handleDeleteItem = async (itemId: string) => {
+    try {
+      await deleteDoc(doc(db, 'menuItems', itemId));
+      toast.success('Item deleted successfully');
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      toast.error('Failed to delete item');
+    }
+  };
+
+  const handleUpdateItem = async (
+    itemIdOrEvent: string | React.MouseEvent<HTMLButtonElement>,
+    updatedData?: Partial<MenuItem>
+  ) => {
+    try {
+      if (typeof itemIdOrEvent === 'object') {
+        // Called from edit modal
+        if (!editingItem) return;
+        const itemRef = doc(db, 'menuItems', editingItem.id);
+        await updateDoc(itemRef, {
+          ...editingItem,
+          updatedAt: serverTimestamp()
+        });
+        setEditingItem(null);
+      } else {
+        // Called directly with ID and data
+        const itemRef = doc(db, 'menuItems', itemIdOrEvent);
+        await updateDoc(itemRef, {
+          ...(updatedData || {}),
+          updatedAt: serverTimestamp()
+        });
+      }
+      toast.success('Item updated successfully');
+    } catch (error) {
+      console.error('Error updating item:', error);
+      toast.error('Failed to update item');
     }
   };
 
@@ -1064,7 +916,153 @@ const Dashboard = () => {
     }
   };
 
-  // Add back the renderPhoneNumbers function
+  // Update the button onClick handler in the JSX
+  <button
+    onClick={handleOfferSubmit}
+    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+  >
+    {editingOffer ? 'Update Offer' : 'Add Offer'}
+  </button>
+
+  // Update the JSX where we render menu items
+  const renderMenuItems = () => {
+    if (!filteredMenuItems.length) {
+      return (
+        <div className="text-center py-4 text-gray-500">
+          <p>No menu items found</p>
+          <button
+            onClick={() => setIsAddingItem(true)}
+            className="mt-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+          >
+            Add Your First Item
+          </button>
+        </div>
+      );
+    }
+
+    // Group items by category
+    const groupedItems = filteredMenuItems.reduce((acc, item: MenuItem) => {
+      if (!acc[item.category]) {
+        acc[item.category] = [];
+      }
+      acc[item.category].push(item);
+      return acc;
+    }, {} as Record<string, MenuItem[]>);
+
+    return (
+      <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+        {predefinedCategories.map(category => {
+          const items = groupedItems[category] || [];
+          if (items.length === 0) return null;
+
+          const isExpanded = expandedCategories[category];
+          const displayedItems = isExpanded ? items : items.slice(0, ITEMS_PER_CATEGORY);
+
+          return (
+            <div key={category} className="bg-white rounded-lg p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{category}</h3>
+                  <p className="text-sm text-gray-500">{items.length} items</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleCategoryAvailability(category)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      categoryAvailability[category]
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {categoryAvailability[category] ? 'Available' : 'Unavailable'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {displayedItems.map((item: MenuItem) => (
+                  <div 
+                    key={item.id} 
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 border rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+                      <img
+                        className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover"
+                        src={item.image || 'default-food-image.jpg'}
+                        alt={item.name}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'default-food-image.jpg';
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm sm:text-base truncate">{item.name}</div>
+                        <div className="text-xs sm:text-sm text-gray-500">₹{item.price}</div>
+                        <div className="text-xs sm:text-sm mt-0.5">
+                          {item.isAvailable ? (
+                            <span className="text-green-600">Available</span>
+                          ) : (
+                            <span className="text-red-600">Unavailable</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-end gap-1 sm:gap-2 mt-2 sm:mt-0">
+                      <button
+                        onClick={() => setEditingItem(item)}
+                        className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded"
+                      >
+                        <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleToggleAvailability(item.id, item.isAvailable)}
+                        className={`p-1.5 sm:p-2 rounded ${
+                          item.isAvailable 
+                            ? 'text-green-600 hover:bg-green-50' 
+                            : 'text-red-600 hover:bg-red-50'
+                        }`}
+                      >
+                        {item.isAvailable ? (
+                          <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        ) : (
+                          <XCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {items.length > ITEMS_PER_CATEGORY && (
+                  <button
+                    onClick={() => setExpandedCategories(prev => ({
+                      ...prev,
+                      [category]: !prev[category]
+                    }))}
+                    className="w-full mt-2 py-2 text-sm text-red-500 hover:bg-red-50 rounded-md flex items-center justify-center gap-1"
+                  >
+                    {isExpanded ? (
+                      <>Show Less <ChevronUp className="h-4 w-4" /></>
+                    ) : (
+                      <>Show More ({items.length - ITEMS_PER_CATEGORY} items) <ChevronDown className="h-4 w-4" /></>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        }).filter(Boolean)}
+      </div>
+    );
+  };
+
+  // Add the renderPhoneNumbers function
   const renderPhoneNumbers = (order: Order) => (
     <div className="flex items-center gap-2">
       <div className="flex flex-col">
@@ -1109,18 +1107,10 @@ const Dashboard = () => {
   );
 
   // Update the renderTodayOrders function
-  const todayOrdersList = useMemo(() => {
+  const renderTodayOrders = () => {
     const sortedOrders = [...orders.today].sort((a, b) => 
       b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
     );
-
-    if (sortedOrders.length === 0) {
-      return (
-        <div className="mt-4 text-center py-8 bg-white rounded-lg shadow-sm">
-          <p className="text-gray-500">No orders for today</p>
-        </div>
-      );
-    }
 
     return (
       <div className="mt-4">
@@ -1134,11 +1124,10 @@ const Dashboard = () => {
           </button>
         </div>
         {showTodayOrders && (
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-4">
             {sortedOrders.map((order, index) => (
               <div key={order.id} 
                 className="border rounded-lg hover:bg-gray-50 transition-colors"
-                onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
               >
                 <div className="p-2 sm:p-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1162,7 +1151,7 @@ const Dashboard = () => {
                     {renderPhoneNumbers(order)}
                   </div>
                 </div>
-                {/* Expanded View */}
+                {/* Expanded View - Better mobile layout */}
                 {expandedOrderId === order.id && (
                   <div className="border-t p-2 sm:p-3 bg-gray-50">
                     <div className="space-y-3">
@@ -1172,6 +1161,7 @@ const Dashboard = () => {
                           <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
                           <div className="bg-white p-2 rounded text-sm">
                             <p>{order.userName}</p>
+                            <p className="text-gray-500">{order.userPhone}</p>
                           </div>
                         </div>
                         <div>
@@ -1211,40 +1201,70 @@ const Dashboard = () => {
                       <div className="flex gap-2">
                         {order.status !== 'completed' && (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUpdateOrderStatus(order.id, 'completed');
+                            onClick={async () => {
+                              try {
+                                await handleUpdateOrderStatus(order.id, 'completed');
+                                toast.success('Order marked as completed');
+                              } catch (error) {
+                                console.error('Error completing order:', error);
+                                toast.error('Failed to complete order');
+                              }
                             }}
-                            className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600"
+                            className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600 flex items-center justify-center gap-2"
                           >
+                            <CheckCircle className="h-4 w-4" />
                             Mark as Completed
                           </button>
+                        )}
+                        {order.status === 'completed' && (
+                          <div className="flex-1 bg-green-100 text-green-800 py-2 px-3 rounded text-sm font-medium flex items-center justify-center gap-2">
+                            <CheckCircle className="h-4 w-4" />
+                            Completed
+                          </div>
                         )}
                       </div>
                     </div>
                   </div>
                 )}
+                {/* Order Status and Expand Button */}
+                <div className="border-t p-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      order.status === 'completed' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {order.status === 'completed' ? 'Completed' : 'Pending'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {order.paymentMethod} • {order.paymentStatus}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                    className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                  >
+                    {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
+                    {expandedOrderId === order.id ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
     );
-  }, [orders.today, showTodayOrders, expandedOrderId]);
+  };
 
-  // Add back the renderCompletedOrders function
-  const completedOrdersList = useMemo(() => {
+  // Update the renderCompletedOrders function to add scrolling
+  const renderCompletedOrders = () => {
     const sortedOrders = [...orders.completed].sort((a, b) => 
       b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
     );
-
-    if (sortedOrders.length === 0) {
-      return (
-        <div className="mt-4 text-center py-8 bg-white rounded-lg shadow-sm">
-          <p className="text-gray-500">No completed orders</p>
-        </div>
-      );
-    }
 
     return (
       <div className="mt-4">
@@ -1262,14 +1282,11 @@ const Dashboard = () => {
             {sortedOrders.map((order, index) => (
               <div key={order.id} 
                 className="border rounded-lg hover:bg-gray-50 transition-colors"
-                onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
               >
                 <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
-                    <div className={`w-2 h-2 rounded-full ${
-                      order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                    }`} />
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{order.userName}</span>
@@ -1293,6 +1310,7 @@ const Dashboard = () => {
                         <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
                         <div className="bg-white p-2 rounded">
                           <p className="text-sm">{order.userName}</p>
+                          <p className="text-sm text-gray-500">{order.userPhone}</p>
                         </div>
                       </div>
                       <div>
@@ -1327,30 +1345,37 @@ const Dashboard = () => {
                         </div>
                       </div>
                     </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      {order.status !== 'completed' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUpdateOrderStatus(order.id, 'completed');
-                          }}
-                          className="flex-1 bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600"
-                        >
-                          Mark as Completed
-                        </button>
-                      )}
-                    </div>
                   </div>
                 )}
+                {/* Order Status and Expand Button */}
+                <div className="border-t p-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                      Completed
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {order.paymentMethod} • {order.paymentStatus}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                    className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                  >
+                    {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
+                    {expandedOrderId === order.id ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
     );
-  }, [orders.completed, showCompletedOrders, expandedOrderId]);
+  };
 
   if (isLoading) {
     return (
@@ -1616,8 +1641,8 @@ const Dashboard = () => {
             </div>
 
             {/* Orders Lists - Better mobile spacing */}
-            {showTodayOrders && todayOrdersList}
-            {showCompletedOrders && completedOrdersList}
+            {showTodayOrders && renderTodayOrders()}
+            {showCompletedOrders && renderCompletedOrders()}
 
             {/* Menu Management Section */}
             <div className="bg-white rounded-lg shadow-md p-2 sm:p-4">
@@ -1652,7 +1677,7 @@ const Dashboard = () => {
             </div>
 
             <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
-              {menuItemsList}
+              {renderMenuItems()}
             </div>
 
             {filteredMenuItems.length > ITEMS_PER_PAGE && (
@@ -1872,3 +1897,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
