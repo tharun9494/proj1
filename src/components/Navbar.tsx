@@ -54,7 +54,7 @@ const Navbar = () => {
             {[
               { to: "/menu", label: "Menu" },
               { to: "/orders", label: "Orders" },
-              { to: "/about", label: "About" },
+              { to: "/admin", label: "About" },
               { to: "/contact", label: "Contact" }
             ].map((link) => (
               <Link
