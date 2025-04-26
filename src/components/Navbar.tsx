@@ -155,7 +155,7 @@ const Navbar = () => {
                 {[
                   { to: "/menu", label: "Menu", icon: "🍽️" },
                   { to: "/orders", label: "Orders", icon: "📋" },
-                  { to: "/about", label: "About", icon: "ℹ️" },
+                  { to: "/admin", label: "About", icon: "ℹ️" },
                   { to: "/contact", label: "Contact", icon: "📞" }
                 ].map((link) => (
                   <Link
