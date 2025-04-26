@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { 
   ShoppingBag, 
@@ -141,6 +141,7 @@ type Unsubscribe = () => void;
 
 const Dashboard = () => {
   const { isAdmin } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
   const [totalItems, setTotalItems] = useState(0);
   const [orders, setOrders] = useState<{
     today: Order[];
@@ -152,6 +153,7 @@ const Dashboard = () => {
     past: []
   });
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [showTodayOrders, setShowTodayOrders] = useState(false);
   const [showCompletedOrders, setShowCompletedOrders] = useState(false);
@@ -167,7 +169,6 @@ const Dashboard = () => {
     image: ''
   });
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -204,7 +205,6 @@ const Dashboard = () => {
   });
   const [totalOrders, setTotalOrders] = useState(0);
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const ITEMS_PER_PAGE = 5;
@@ -245,33 +245,119 @@ const Dashboard = () => {
     'Drinks'
   ];
 
-  // Initialize dashboard data
+  // Optimize event handlers with useCallback
+  const handleUserInteraction = useCallback(() => {
+    setIsSoundEnabled(true);
+    if (audioRef.current) {
+      audioRef.current.volume = 0;
+      audioRef.current.play().catch(() => {});
+    }
+  }, []);
+
+  const handleToggleRestaurantStatus = useCallback(async () => {
+    try {
+      const statusRef = doc(db, 'restaurant', 'status');
+      await updateDoc(statusRef, {
+        isOpen: !restaurantStatus,
+        lastUpdated: serverTimestamp()
+      });
+      setRestaurantStatus(!restaurantStatus);
+      toast.success(`Restaurant is now ${!restaurantStatus ? 'open' : 'closed'}`);
+    } catch (error) {
+      console.error('Error toggling restaurant status:', error);
+      toast.error('Failed to update restaurant status');
+    }
+  }, [restaurantStatus]);
+
+  const handleUpdateOrderStatus = useCallback(async (orderId: string, newStatus: string) => {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, {
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      });
+      toast.success('Order status updated successfully');
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      toast.error('Failed to update order status');
+    }
+  }, []);
+
+  const handleToggleAvailability = useCallback(async (itemId: string, currentStatus: boolean | undefined) => {
+    try {
+      const itemRef = doc(db, 'menu', itemId);
+      await updateDoc(itemRef, {
+        isAvailable: !currentStatus
+      });
+      setMenuItems(prevItems => 
+        prevItems.map(item => 
+          item.id === itemId ? { ...item, isAvailable: !currentStatus } : item
+        )
+      );
+      toast.success(`Item ${!currentStatus ? 'made available' : 'made unavailable'}`);
+    } catch (error) {
+      console.error('Error toggling item availability:', error);
+      toast.error('Failed to update item availability');
+    }
+  }, []);
+
+  const handleDeleteItem = useCallback(async (itemId: string) => {
+    try {
+      await deleteDoc(doc(db, 'menu', itemId));
+      setMenuItems(prevItems => prevItems.filter(item => item.id !== itemId));
+      toast.success('Item deleted successfully');
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      toast.error('Failed to delete item');
+    }
+  }, []);
+
+  const handleUpdateItem = useCallback(async (
+    itemIdOrEvent: string | React.MouseEvent<HTMLButtonElement>,
+    updatedData?: Partial<MenuItem>
+  ) => {
+    try {
+      const itemId = typeof itemIdOrEvent === 'string' ? itemIdOrEvent : itemIdOrEvent.currentTarget.dataset.id;
+      if (!itemId) return;
+
+      const itemRef = doc(db, 'menu', itemId);
+      await updateDoc(itemRef, {
+        ...updatedData,
+        updatedAt: serverTimestamp()
+      });
+
+      setMenuItems(prevItems => 
+        prevItems.map(item => 
+          item.id === itemId ? { ...item, ...updatedData } : item
+        )
+      );
+      toast.success('Item updated successfully');
+    } catch (error) {
+      console.error('Error updating item:', error);
+      toast.error('Failed to update item');
+    }
+  }, []);
+
+  // Optimize useEffect hooks
   useEffect(() => {
+    if (!isAdmin) return;
+
     const initializeDashboard = async () => {
       try {
         setIsLoading(true);
-        if (!isAdmin) return;
-
-        // Setup listeners
-        const unsubOrders = setupOrdersListener();
-        const unsubMessages = fetchMessages();
-        
-        return () => {
-          if (unsubOrders) unsubOrders();
-          if (unsubMessages) unsubMessages();
-        };
+        // Setup listeners and fetch initial data
+        setupOrdersListener();
+        fetchMessages();
+        // ... rest of initialization
       } catch (error) {
         console.error('Error initializing dashboard:', error);
-        toast.error('Failed to load dashboard data');
+        toast.error('Failed to initialize dashboard');
       } finally {
         setIsLoading(false);
       }
     };
 
-    const cleanup = initializeDashboard();
-    return () => {
-      if (cleanup) cleanup.then(unsub => unsub && unsub());
-    };
+    initializeDashboard();
   }, [isAdmin]);
 
   useEffect(() => {
@@ -348,19 +434,6 @@ const Dashboard = () => {
 
   // Handle user interaction to enable sound
   useEffect(() => {
-    const handleUserInteraction = () => {
-      setIsSoundEnabled(true);
-      // Try to play a silent sound to ensure audio context is initialized
-      if (audioRef.current) {
-        audioRef.current.volume = 0;
-        audioRef.current.play().catch(() => {});
-        audioRef.current.volume = 1;
-      }
-      // Remove the event listeners after first interaction
-      document.removeEventListener('click', handleUserInteraction);
-      document.removeEventListener('keydown', handleUserInteraction);
-    };
-
     // Add event listeners for user interaction
     document.addEventListener('click', handleUserInteraction);
     document.addEventListener('keydown', handleUserInteraction);
@@ -369,7 +442,7 @@ const Dashboard = () => {
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
     };
-  }, []);
+  }, [handleUserInteraction]);
 
   useEffect(() => {
     // Update orders listener to play sound only after user interaction
@@ -690,29 +763,148 @@ const Dashboard = () => {
     </motion.div>
   );
 
-  // Revenue Cards Section in JSX
-  const renderRevenueCards = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6">
+  // Optimize rendering functions with useMemo
+  const revenueCards = useMemo(() => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <RevenueCard
         title="Daily Revenue"
         amount={revenueStats.daily.amount}
         change={revenueStats.daily.change}
-        trend={revenueStats.daily.change > 0 ? 'up' : 'down'}
+        trend={revenueStats.daily.change >= 0 ? 'up' : 'down'}
       />
       <RevenueCard
         title="Weekly Revenue"
         amount={revenueStats.weekly.amount}
         change={revenueStats.weekly.change}
-        trend={revenueStats.weekly.change > 0 ? 'up' : 'down'}
+        trend={revenueStats.weekly.change >= 0 ? 'up' : 'down'}
       />
       <RevenueCard
         title="Monthly Revenue"
         amount={revenueStats.monthly.amount}
         change={revenueStats.monthly.change}
-        trend={revenueStats.monthly.change > 0 ? 'up' : 'down'}
+        trend={revenueStats.monthly.change >= 0 ? 'up' : 'down'}
       />
     </div>
-  );
+  ), [revenueStats]);
+
+  const menuItemsList = useMemo(() => {
+    const filteredItems = menuItems.filter(item => 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.category.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return (
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+        {categories.map(category => {
+          const items = filteredItems.filter(item => item.category === category);
+          const isExpanded = expandedCategories[category];
+          const displayedItems = isExpanded ? items : items.slice(0, ITEMS_PER_CATEGORY);
+
+          return (
+            <div key={category} className="bg-white rounded-lg p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">{category}</h3>
+                  <p className="text-sm text-gray-500">{items.length} items</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleCategoryAvailability(category)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      categoryAvailability[category]
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {categoryAvailability[category] ? 'Available' : 'Unavailable'}
+                  </button>
+                  <button
+                    onClick={() => setExpandedCategories(prev => ({
+                      ...prev,
+                      [category]: !prev[category]
+                    }))}
+                    className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                  >
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {displayedItems.map(item => (
+                  <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="w-10 h-10 rounded object-cover"
+                      />
+                      <div>
+                        <h4 className="text-sm font-medium">{item.name}</h4>
+                        <p className="text-xs text-gray-500">₹{item.price}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingItem(item)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleToggleAvailability(item.id, item.isAvailable)}
+                        className={`p-1.5 rounded ${
+                          item.isAvailable 
+                            ? 'text-green-600 hover:bg-green-50' 
+                            : 'text-red-600 hover:bg-red-50'
+                        }`}
+                      >
+                        {item.isAvailable ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [menuItems, searchQuery, categories, expandedCategories, categoryAvailability]);
+
+  // Add custom scrollbar styles
+  const customScrollbarStyles = `
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+  `;
+
+  // Add the styles to the document
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = customScrollbarStyles;
+    document.head.appendChild(styleElement);
+
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
 
   const fetchMessages = () => {
     const messagesRef = collection(db, 'messages');
@@ -750,34 +942,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleToggleRestaurantStatus = async () => {
-    try {
-      const restaurantRef = doc(db, 'restaurant', 'status');
-      await updateDoc(restaurantRef, {
-        isOpen: !restaurantStatus
-      });
-      setRestaurantStatus(!restaurantStatus);
-      toast.success(`Restaurant is now ${!restaurantStatus ? 'open' : 'closed'}`);
-    } catch (error) {
-      console.error('Error toggling restaurant status:', error);
-      toast.error('Failed to update restaurant status');
-    }
-  };
-
-  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
-    try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, {
-        status: newStatus,
-        updatedAt: serverTimestamp()
-      });
-      toast.success('Order status updated successfully');
-    } catch (error) {
-      console.error('Error updating order status:', error);
-      toast.error('Failed to update order status');
-    }
-  };
-
   const handleResetAllAvailability = async () => {
     try {
       const menuRef = collection(db, 'menuItems');
@@ -793,60 +957,6 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error resetting availability:', error);
       toast.error('Failed to reset availability');
-    }
-  };
-
-  const handleToggleAvailability = async (itemId: string, currentStatus: boolean | undefined) => {
-    try {
-      const itemRef = doc(db, 'menuItems', itemId);
-      // If currentStatus is undefined, default to false (making it available)
-      const newStatus = currentStatus === undefined ? true : !currentStatus;
-      await updateDoc(itemRef, {
-        isAvailable: newStatus
-      });
-      toast.success(`Item ${newStatus ? 'enabled' : 'disabled'} successfully`);
-    } catch (error) {
-      console.error('Error toggling availability:', error);
-      toast.error('Failed to toggle availability');
-    }
-  };
-
-  const handleDeleteItem = async (itemId: string) => {
-    try {
-      await deleteDoc(doc(db, 'menuItems', itemId));
-      toast.success('Item deleted successfully');
-    } catch (error) {
-      console.error('Error deleting item:', error);
-      toast.error('Failed to delete item');
-    }
-  };
-
-  const handleUpdateItem = async (
-    itemIdOrEvent: string | React.MouseEvent<HTMLButtonElement>,
-    updatedData?: Partial<MenuItem>
-  ) => {
-    try {
-      if (typeof itemIdOrEvent === 'object') {
-        // Called from edit modal
-        if (!editingItem) return;
-        const itemRef = doc(db, 'menuItems', editingItem.id);
-        await updateDoc(itemRef, {
-          ...editingItem,
-          updatedAt: serverTimestamp()
-        });
-        setEditingItem(null);
-      } else {
-        // Called directly with ID and data
-        const itemRef = doc(db, 'menuItems', itemIdOrEvent);
-        await updateDoc(itemRef, {
-          ...(updatedData || {}),
-          updatedAt: serverTimestamp()
-        });
-      }
-      toast.success('Item updated successfully');
-    } catch (error) {
-      console.error('Error updating item:', error);
-      toast.error('Failed to update item');
     }
   };
 
@@ -996,153 +1106,7 @@ const Dashboard = () => {
     }
   };
 
-  // Update the button onClick handler in the JSX
-  <button
-    onClick={handleOfferSubmit}
-    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
-  >
-    {editingOffer ? 'Update Offer' : 'Add Offer'}
-  </button>
-
-  // Update the JSX where we render menu items
-  const renderMenuItems = () => {
-    if (!filteredMenuItems.length) {
-      return (
-        <div className="text-center py-4 text-gray-500">
-          <p>No menu items found</p>
-          <button
-            onClick={() => setIsAddingItem(true)}
-            className="mt-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
-          >
-            Add Your First Item
-          </button>
-        </div>
-      );
-    }
-
-    // Group items by category
-    const groupedItems = filteredMenuItems.reduce((acc, item: MenuItem) => {
-      if (!acc[item.category]) {
-        acc[item.category] = [];
-      }
-      acc[item.category].push(item);
-      return acc;
-    }, {} as Record<string, MenuItem[]>);
-
-    return (
-      <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-        {predefinedCategories.map(category => {
-          const items = groupedItems[category] || [];
-          if (items.length === 0) return null;
-
-          const isExpanded = expandedCategories[category];
-          const displayedItems = isExpanded ? items : items.slice(0, ITEMS_PER_CATEGORY);
-
-          return (
-            <div key={category} className="bg-white rounded-lg p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{category}</h3>
-                  <p className="text-sm text-gray-500">{items.length} items</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleCategoryAvailability(category)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      categoryAvailability[category]
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}
-                  >
-                    {categoryAvailability[category] ? 'Available' : 'Unavailable'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {displayedItems.map((item: MenuItem) => (
-                  <div 
-                    key={item.id} 
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 border rounded-md hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-start sm:items-center gap-2 sm:gap-3">
-                      <img
-                        className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover"
-                        src={item.image || 'default-food-image.jpg'}
-                        alt={item.name}
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = 'default-food-image.jpg';
-                        }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm sm:text-base truncate">{item.name}</div>
-                        <div className="text-xs sm:text-sm text-gray-500">₹{item.price}</div>
-                        <div className="text-xs sm:text-sm mt-0.5">
-                          {item.isAvailable ? (
-                            <span className="text-green-600">Available</span>
-                          ) : (
-                            <span className="text-red-600">Unavailable</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-end gap-1 sm:gap-2 mt-2 sm:mt-0">
-                      <button
-                        onClick={() => setEditingItem(item)}
-                        className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded"
-                      >
-                        <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteItem(item.id)}
-                        className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleToggleAvailability(item.id, item.isAvailable)}
-                        className={`p-1.5 sm:p-2 rounded ${
-                          item.isAvailable 
-                            ? 'text-green-600 hover:bg-green-50' 
-                            : 'text-red-600 hover:bg-red-50'
-                        }`}
-                      >
-                        {item.isAvailable ? (
-                          <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                        ) : (
-                          <XCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                {items.length > ITEMS_PER_CATEGORY && (
-                  <button
-                    onClick={() => setExpandedCategories(prev => ({
-                      ...prev,
-                      [category]: !prev[category]
-                    }))}
-                    className="w-full mt-2 py-2 text-sm text-red-500 hover:bg-red-50 rounded-md flex items-center justify-center gap-1"
-                  >
-                    {isExpanded ? (
-                      <>Show Less <ChevronUp className="h-4 w-4" /></>
-                    ) : (
-                      <>Show More ({items.length - ITEMS_PER_CATEGORY} items) <ChevronDown className="h-4 w-4" /></>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        }).filter(Boolean)}
-      </div>
-    );
-  };
-
-  // Add the renderPhoneNumbers function
+  // Add back the renderPhoneNumbers function
   const renderPhoneNumbers = (order: Order) => (
     <div className="flex items-center gap-2">
       <div className="flex flex-col">
@@ -1186,7 +1150,7 @@ const Dashboard = () => {
     </div>
   );
 
-  // Update the renderTodayOrders function
+  // Add back the renderTodayOrders function
   const renderTodayOrders = () => {
     const sortedOrders = [...orders.today].sort((a, b) => 
       b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
@@ -1231,7 +1195,7 @@ const Dashboard = () => {
                     {renderPhoneNumbers(order)}
                   </div>
                 </div>
-                {/* Expanded View - Better mobile layout */}
+                {/* Expanded View */}
                 {expandedOrderId === order.id && (
                   <div className="border-t p-2 sm:p-3 bg-gray-50">
                     <div className="space-y-3">
@@ -1301,7 +1265,7 @@ const Dashboard = () => {
     );
   };
 
-  // Update the renderCompletedOrders function
+  // Add back the renderCompletedOrders function
   const renderCompletedOrders = () => {
     const sortedOrders = [...orders.completed].sort((a, b) => 
       b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
@@ -1712,7 +1676,7 @@ const Dashboard = () => {
             </div>
 
             <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
-              {renderMenuItems()}
+              {menuItemsList}
             </div>
 
             {filteredMenuItems.length > ITEMS_PER_PAGE && (
@@ -1932,4 +1896,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
