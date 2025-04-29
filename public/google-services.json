@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "215585759764",
+    "project_id": "pittas-fb2a8",
+    "storage_bucket": "pittas-fb2a8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:215585759764:android:d1cef04e916bf7e1b27d01",
+        "android_client_info": {
+          "package_name": "com.forefightera.pittasbawarchi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRKNc4sMLeQjh1p3QcXw5dgTWBBoLL6xc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

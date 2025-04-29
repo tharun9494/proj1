@@ -1,15 +1,33 @@
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Order, OrderStats } from '../types/order';
+import { sendNotificationToAdmin } from './notificationService';
 
 export const createOrder = async (orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
-  const ordersRef = collection(db, 'orders');
-  const docRef = await addDoc(ordersRef, {
-    ...orderData,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
-  return docRef.id;
+  try {
+    const ordersRef = collection(db, 'orders');
+    const docRef = await addDoc(ordersRef, {
+      ...orderData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    // Send notification to admin
+    await sendNotificationToAdmin({
+      title: 'New Order Received! 🍽️',
+      body: `Order #${docRef.id.slice(-6)} - ₹${orderData.totalAmount} - ${orderData.userName}`,
+      data: {
+        orderId: docRef.id,
+        phoneNumber: orderData.userPhone,
+        action: 'view_order'
+      }
+    });
+
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating order:', error);
+    throw error;
+  }
 };
 
 interface PaymentDetails {
