@@ -54,6 +54,13 @@ import {
 } from 'recharts';
 import toast from 'react-hot-toast';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subDays, subWeeks, subMonths } from 'date-fns';
+import {
+  requestNotificationPermission,
+  onMessageListener,
+  showNotification,
+  saveFCMToken
+} from '../../services/notificationService';
+import { auth } from '../../config/firebase';
 
 interface MenuItem {
   id: string;
@@ -1377,6 +1384,50 @@ const Dashboard = () => {
     );
   };
 
+  // Initialize FCM
+  useEffect(() => {
+    const initializeFCM = async () => {
+      try {
+        const token = await requestNotificationPermission();
+        if (token && isAdmin) {
+          await saveFCMToken(auth.currentUser?.uid || '', token);
+        }
+      } catch (error) {
+        console.error('Error initializing FCM:', error);
+      }
+    };
+
+    if (isAdmin) {
+      initializeFCM();
+    }
+  }, [isAdmin]);
+
+  // Listen for foreground messages
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const messageListener = onMessageListener();
+    messageListener.then((payload) => {
+      showNotification(payload);
+      // Play notification sound if enabled
+      if (isSoundEnabled && audioRef.current) {
+        audioRef.current.play().catch(console.error);
+      }
+      // Show in-app notification
+      if (payload.data?.orderId) {
+        const order = [...orders.today, ...orders.completed, ...orders.past]
+          .find(o => o.id === payload.data?.orderId);
+        if (order) {
+          setNewOrderNotification({ show: true, order });
+        }
+      }
+    }).catch((err) => console.error('Error receiving message:', err));
+
+    return () => {
+      // Cleanup if needed
+    };
+  }, [isAdmin, orders.today, orders.completed, orders.past, isSoundEnabled]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -1898,3 +1949,4 @@ const Dashboard = () => {
 
 export default Dashboard;
 
+  
