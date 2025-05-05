@@ -3,15 +3,14 @@ import { getAuth } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics } from "firebase/analytics";
+import { getMessaging } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyCRKNc4sMLeQjh1p3QcXw5dgTWBBoLL6xc",
+  projectId: "pittas-fb2a8",
+  messagingSenderId: "215585759764",
+  appId: "1:215585759764:android:d1cef04e916bf7e1b27d01",
+  vapidKey: "BCgCRt5u3_sJUQtBDh29MZmXuR9igNB4wiifQWcIy3PF-GM6UlQjFUNJO0eXpOcb8L1zPk7vcV0YzlHpacfrqrI"
 };
 
 // Initialize Firebase with better error handling
@@ -32,6 +31,9 @@ export const storage = getStorage(app);
 
 // Initialize Analytics only in browser environment
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
+
+// Initialize Messaging only in browser environment
+export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 // Export the Firebase app instance
 export default app;
