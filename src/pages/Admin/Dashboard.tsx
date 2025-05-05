@@ -1132,135 +1132,157 @@ const Dashboard = () => {
         </div>
         {showTodayOrders && (
           <div className="space-y-4">
-            {sortedOrders.map((order, index) => (
-              <div key={order.id} 
-                className="border rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="p-2 sm:p-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
-                      <div className={`w-2 h-2 rounded-full ${
-                        order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                      }`} />
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm sm:text-base">{order.userName}</span>
-                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                            #{order.id.slice(-6)}
-                          </span>
-                        </div>
-                        <div className="text-xs sm:text-sm text-gray-500 mt-1">
-                          {order.items.length} items • ₹{order.totalAmount}
-                        </div>
-                      </div>
-                    </div>
-                    {renderPhoneNumbers(order)}
-                  </div>
-                </div>
-                {/* Expanded View - Better mobile layout */}
-                {expandedOrderId === order.id && (
-                  <div className="border-t p-2 sm:p-3 bg-gray-50">
-                    <div className="space-y-3">
-                      {/* Customer Details */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {sortedOrders.map((order, index) => {
+              // Calculate delivery charges
+              const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+              const deliveryCharges = itemTotal < 500 ? 40 : 0;
+              const finalTotal = itemTotal + deliveryCharges;
+
+              return (
+                <div key={order.id} 
+                  className="border rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="p-2 sm:p-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
+                        <div className={`w-2 h-2 rounded-full ${
+                          order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+                        }`} />
                         <div>
-                          <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                          <div className="bg-white p-2 rounded text-sm">
-                            <p>{order.userName}</p>
-                            <p className="text-gray-500">{order.userPhone}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm sm:text-base">{order.userName}</span>
+                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                              #{order.id.slice(-6)}
+                            </span>
                           </div>
-                        </div>
-                        <div>
-                          <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                          <div className="bg-white p-2 rounded text-sm">
-                            <p>{order.address.street}</p>
-                            <p>{order.address.city}, {order.address.pincode}</p>
-                            {order.address.landmark && (
-                              <p className="text-gray-500 mt-1">
-                                Landmark: {order.address.landmark}
-                              </p>
+                          <div className="text-xs sm:text-sm text-gray-500 mt-1">
+                            {order.items.length} items • ₹{finalTotal}
+                            {deliveryCharges > 0 && (
+                              <span className="text-xs text-gray-500 ml-1">
+                                (incl. ₹{deliveryCharges} delivery)
+                              </span>
                             )}
                           </div>
                         </div>
                       </div>
-
-                      {/* Order Items */}
-                      <div>
-                        <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                        <div className="bg-white rounded p-2 space-y-1.5">
-                          {order.items.map((item) => (
-                            <div key={item.id} className="flex justify-between text-sm">
-                              <span>{item.name} × {item.quantity}</span>
-                              <span>₹{item.price * item.quantity}</span>
+                      {renderPhoneNumbers(order)}
+                    </div>
+                  </div>
+                  {/* Expanded View - Better mobile layout */}
+                  {expandedOrderId === order.id && (
+                    <div className="border-t p-2 sm:p-3 bg-gray-50">
+                      <div className="space-y-3">
+                        {/* Customer Details */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                            <div className="bg-white p-2 rounded text-sm">
+                              <p>{order.userName}</p>
+                              <p className="text-gray-500">{order.userPhone}</p>
                             </div>
-                          ))}
-                          <div className="border-t pt-2 mt-2">
-                            <div className="flex justify-between text-sm font-medium">
-                              <span>Total Amount</span>
-                              <span>₹{order.totalAmount}</span>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                            <div className="bg-white p-2 rounded text-sm">
+                              <p>{order.address.street}</p>
+                              <p>{order.address.city}, {order.address.pincode}</p>
+                              {order.address.landmark && (
+                                <p className="text-gray-500 mt-1">
+                                  Landmark: {order.address.landmark}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Actions */}
-                      <div className="flex gap-2">
-                        {order.status !== 'completed' && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                await handleUpdateOrderStatus(order.id, 'completed');
-                                toast.success('Order marked as completed');
-                              } catch (error) {
-                                console.error('Error completing order:', error);
-                                toast.error('Failed to complete order');
-                              }
-                            }}
-                            className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600 flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            Mark as Completed
-                          </button>
-                        )}
-                        {order.status === 'completed' && (
-                          <div className="flex-1 bg-green-100 text-green-800 py-2 px-3 rounded text-sm font-medium flex items-center justify-center gap-2">
-                            <CheckCircle className="h-4 w-4" />
-                            Completed
+                        {/* Order Items */}
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                          <div className="bg-white rounded p-2 space-y-1.5">
+                            {order.items.map((item) => (
+                              <div key={item.id} className="flex justify-between text-sm">
+                                <span>{item.name} × {item.quantity}</span>
+                                <span>₹{item.price * item.quantity}</span>
+                              </div>
+                            ))}
+                            <div className="border-t pt-2 mt-2">
+                              <div className="flex justify-between text-sm">
+                                <span>Items Total</span>
+                                <span>₹{itemTotal}</span>
+                              </div>
+                              {deliveryCharges > 0 && (
+                                <div className="flex justify-between text-sm">
+                                  <span>Delivery Charges</span>
+                                  <span>₹{deliveryCharges}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between text-sm font-medium mt-1">
+                                <span>Total Amount</span>
+                                <span>₹{finalTotal}</span>
+                              </div>
+                            </div>
                           </div>
-                        )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          {order.status !== 'completed' && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await handleUpdateOrderStatus(order.id, 'completed');
+                                  toast.success('Order marked as completed');
+                                } catch (error) {
+                                  console.error('Error completing order:', error);
+                                  toast.error('Failed to complete order');
+                                }
+                              }}
+                              className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600 flex items-center justify-center gap-2"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                              Mark as Completed
+                            </button>
+                          )}
+                          {order.status === 'completed' && (
+                            <div className="flex-1 bg-green-100 text-green-800 py-2 px-3 rounded text-sm font-medium flex items-center justify-center gap-2">
+                              <CheckCircle className="h-4 w-4" />
+                              Completed
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
+                  )}
+                  {/* Order Status and Expand Button */}
+                  <div className="border-t p-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        order.status === 'completed' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {order.status === 'completed' ? 'Completed' : 'Pending'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {order.paymentMethod} • {order.paymentStatus}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                    >
+                      {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
+                      {expandedOrderId === order.id ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
-                )}
-                {/* Order Status and Expand Button */}
-                <div className="border-t p-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      order.status === 'completed' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {order.status === 'completed' ? 'Completed' : 'Pending'}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {order.paymentMethod} • {order.paymentStatus}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                    className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                  >
-                    {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
-                    {expandedOrderId === order.id ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1286,98 +1308,120 @@ const Dashboard = () => {
         </div>
         {showCompletedOrders && (
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-            {sortedOrders.map((order, index) => (
-              <div key={order.id} 
-                className="border rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">{order.userName}</span>
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                          #{order.id.slice(-6)}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        {order.items.length} items • ₹{order.totalAmount}
-                      </div>
-                    </div>
-                  </div>
-                  {renderPhoneNumbers(order)}
-                </div>
-                {/* Expanded View */}
-                {expandedOrderId === order.id && (
-                  <div className="border-t p-3 bg-gray-50 space-y-4">
-                    {/* Customer Details */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {sortedOrders.map((order, index) => {
+              // Calculate delivery charges
+              const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+              const deliveryCharges = itemTotal < 500 ? 40 : 0;
+              const finalTotal = itemTotal + deliveryCharges;
+
+              return (
+                <div key={order.id} 
+                  className="border rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
                       <div>
-                        <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                        <div className="bg-white p-2 rounded">
-                          <p className="text-sm">{order.userName}</p>
-                          <p className="text-sm text-gray-500">{order.userPhone}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">{order.userName}</span>
+                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                            #{order.id.slice(-6)}
+                          </span>
                         </div>
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                        <div className="bg-white p-2 rounded">
-                          <p className="text-sm">{order.address.street}</p>
-                          <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
-                          {order.address.landmark && (
-                            <p className="text-sm text-gray-500 mt-1">
-                              Landmark: {order.address.landmark}
-                            </p>
+                        <div className="text-sm text-gray-500 mt-1">
+                          {order.items.length} items • ₹{finalTotal}
+                          {deliveryCharges > 0 && (
+                            <span className="text-xs text-gray-500 ml-1">
+                              (incl. ₹{deliveryCharges} delivery)
+                            </span>
                           )}
                         </div>
                       </div>
                     </div>
-
-                    {/* Order Items */}
-                    <div>
-                      <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                      <div className="bg-white rounded p-2 space-y-2">
-                        {order.items.map((item) => (
-                          <div key={item.id} className="flex justify-between text-sm">
-                            <span>{item.name} × {item.quantity}</span>
-                            <span>₹{item.price * item.quantity}</span>
+                    {renderPhoneNumbers(order)}
+                  </div>
+                  {/* Expanded View */}
+                  {expandedOrderId === order.id && (
+                    <div className="border-t p-3 bg-gray-50 space-y-4">
+                      {/* Customer Details */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                          <div className="bg-white p-2 rounded">
+                            <p className="text-sm">{order.userName}</p>
+                            <p className="text-sm text-gray-500">{order.userPhone}</p>
                           </div>
-                        ))}
-                        <div className="border-t pt-2 mt-2">
-                          <div className="flex justify-between text-sm font-medium">
-                            <span>Total Amount</span>
-                            <span>₹{order.totalAmount}</span>
+                        </div>
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                          <div className="bg-white p-2 rounded">
+                            <p className="text-sm">{order.address.street}</p>
+                            <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
+                            {order.address.landmark && (
+                              <p className="text-sm text-gray-500 mt-1">
+                                Landmark: {order.address.landmark}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Order Items */}
+                      <div>
+                        <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                        <div className="bg-white rounded p-2 space-y-2">
+                          {order.items.map((item) => (
+                            <div key={item.id} className="flex justify-between text-sm">
+                              <span>{item.name} × {item.quantity}</span>
+                              <span>₹{item.price * item.quantity}</span>
+                            </div>
+                          ))}
+                          <div className="border-t pt-2 mt-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Items Total</span>
+                              <span>₹{itemTotal}</span>
+                            </div>
+                            {deliveryCharges > 0 && (
+                              <div className="flex justify-between text-sm">
+                                <span>Delivery Charges</span>
+                                <span>₹{deliveryCharges}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between text-sm font-medium mt-1">
+                              <span>Total Amount</span>
+                              <span>₹{finalTotal}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
+                  )}
+                  {/* Order Status and Expand Button */}
+                  <div className="border-t p-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                        Completed
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {order.paymentMethod} • {order.paymentStatus}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                    >
+                      {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
+                      {expandedOrderId === order.id ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
-                )}
-                {/* Order Status and Expand Button */}
-                <div className="border-t p-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
-                      Completed
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {order.paymentMethod} • {order.paymentStatus}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                    className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                  >
-                    {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
-                    {expandedOrderId === order.id ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1453,6 +1497,8 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="container mx-auto px-4 py-8">
+       
+
         {/* Main Dashboard Content */}
         <div className="py-2 sm:py-4">
           <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">

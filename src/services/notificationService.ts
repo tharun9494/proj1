@@ -16,6 +16,14 @@ export interface NotificationPayload {
   };
 }
 
+let notificationSound: HTMLAudioElement;
+
+// Initialize notification sound
+if (typeof window !== 'undefined') {
+  notificationSound = new Audio('/notification.mp3');
+  notificationSound.load(); // Preload the sound
+}
+
 // Function to request notification permission and get FCM token
 export const requestNotificationPermission = async () => {
   try {
@@ -24,8 +32,11 @@ export const requestNotificationPermission = async () => {
       const token = await getToken(messaging, {
         vapidKey: 'BCgCRt5u3_sJUQtBDh29MZmXuR9igNB4wiifQWcIy3PF-GM6UlQjFUNJO0eXpOcb8L1zPk7vcV0YzlHpacfrqrI'
       });
-      console.log('FCM Token:', token);
-      return token;
+      if (token) {
+        console.log('FCM Token:', token);
+        await saveFCMToken('admin', token); // Save token for admin
+        return token;
+      }
     }
     console.log('Notification permission denied');
     return null;
@@ -38,13 +49,17 @@ export const requestNotificationPermission = async () => {
 // Function to save FCM token to Firestore
 export const saveFCMToken = async (userId: string, token: string) => {
   try {
+    // Check if token already exists
     const tokensRef = collection(db, 'fcmTokens');
-    await addDoc(tokensRef, {
+    const tokenDoc = {
       userId,
       token,
       createdAt: serverTimestamp(),
-      platform: 'web'
-    });
+      platform: 'web',
+      lastUpdated: serverTimestamp()
+    };
+
+    await addDoc(tokensRef, tokenDoc);
     console.log('FCM token saved successfully');
   } catch (error) {
     console.error('Error saving FCM token:', error);
@@ -56,6 +71,12 @@ export const onMessageListener = () =>
   new Promise<NotificationPayload>((resolve) => {
     onMessage(messaging, (payload) => {
       console.log('Received foreground message:', payload);
+      
+      // Play notification sound
+      if (notificationSound) {
+        notificationSound.play().catch(console.error);
+      }
+
       resolve({
         title: payload.notification?.title || '',
         body: payload.notification?.body || '',
@@ -72,17 +93,19 @@ export const showNotification = (payload: NotificationPayload) => {
   }
 
   if (Notification.permission === 'granted') {
+    // Play notification sound
+    if (notificationSound) {
+      notificationSound.play().catch(console.error);
+    }
+
     const notification = new Notification(payload.title, {
       body: payload.body,
       icon: '/logo192.png',
-      data: payload.data,
-      silent: false, // Enable sound
-      requireInteraction: true // Keep notification until user interacts
+      tag: payload.data?.orderId || 'new-order',
+      renotify: true,
+      requireInteraction: true,
+      data: payload.data
     });
-
-    // Play sound manually for web notifications
-    const audio = new Audio('/notification.mp3');
-    audio.play().catch(console.error);
 
     notification.onclick = function() {
       if (payload.data?.action === 'view_order' && payload.data.orderId) {
@@ -92,6 +115,7 @@ export const showNotification = (payload: NotificationPayload) => {
       } else if (payload.data?.url) {
         window.open(payload.data.url, '_blank');
       }
+      notification.close();
     };
   }
 };
@@ -111,35 +135,14 @@ export const sendNotificationToAdmin = async (payload: NotificationPayload) => {
           title: payload.title,
           body: payload.body,
           icon: '/logo192.png',
-          click_action: 'https://your-domain.com/admin/dashboard',
-          sound: 'notification.mp3', // Add sound file name
-          android_channel_id: 'orders', // Specify Android channel
-          priority: 'high'
+          click_action: window.location.origin + '/admin/dashboard'
         },
         data: {
           ...payload.data,
-          click_action: 'FLUTTER_NOTIFICATION_CLICK', // For Flutter/mobile apps
-          sound: 'notification.mp3',
-          android_channel_id: 'orders'
+          url: window.location.origin + '/admin/dashboard'
         },
-        android: {
-          priority: 'high',
-          notification: {
-            sound: 'notification.mp3',
-            channel_id: 'orders',
-            priority: 'high',
-            default_sound: true,
-            default_vibrate_timings: true
-          }
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: 'notification.mp3',
-              category: 'NEW_ORDER'
-            }
-          }
-        }
+        priority: 'high',
+        content_available: true
       })
     });
 

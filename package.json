@@ -14,6 +14,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "@heroicons/react": "^2.2.0",
+    "@types/node": "^22.15.3",
     "@types/react-router-dom": "^5.3.3",
     "antd": "^5.24.8",
     "axios": "^1.6.7",
@@ -21,6 +22,8 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "firebase": "^10.8.0",
+    "firebase-admin": "^13.3.0",
+    "firebase-functions": "^6.3.2",
     "framer-motion": "^11.0.8",
     "lucide-react": "^0.344.0",
     "next": "^15.2.4",
@@ -48,7 +51,7 @@
     "globals": "^15.9.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.5.3",
+    "typescript": "^5.8.3",
     "typescript-eslint": "^8.3.0",
     "vite": "^5.4.2"
   }

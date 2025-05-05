@@ -5,11 +5,13 @@ firebase.initializeApp({
   apiKey: "AIzaSyCRKNc4sMLeQjh1p3QcXw5dgTWBBoLL6xc",
   projectId: "pittas-fb2a8",
   messagingSenderId: "215585759764",
-  appId: "1:215585759764:android:d1cef04e916bf7e1b27d01"
+  appId: "1:215585759764:android:d1cef04e916bf7e1b27d01",
+  vapidKey: "BCgCRt5u3_sJUQtBDh29MZmXuR9igNB4wiifQWcIy3PF-GM6UlQjFUNJO0eXpOcb8L1zPk7vcV0YzlHpacfrqrI"
 });
 
 const messaging = firebase.messaging();
 
+// Handle background messages
 messaging.onBackgroundMessage((payload) => {
   console.log('Received background message:', payload);
 
@@ -18,22 +20,41 @@ messaging.onBackgroundMessage((payload) => {
     body: payload.notification.body,
     icon: '/logo192.png',
     badge: '/logo192.png',
-    sound: '/notification.mp3',
-    vibrate: [200, 100, 200],
+    tag: payload.data?.orderId || 'new-order',
+    renotify: true,
     requireInteraction: true,
     data: payload.data,
-    android: {
-      sound: 'notification',
-      priority: 'high',
-      channelId: 'orders',
-      notification: {
-        sound: 'notification.mp3',
-        defaultSound: true,
-        defaultVibrateTimings: true,
-        priority: 'high'
+    actions: [
+      {
+        action: 'view_order',
+        title: 'View Order'
+      },
+      {
+        action: 'call_customer',
+        title: 'Call Customer'
       }
-    }
+    ]
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const urlToOpen = event.notification.data?.orderId 
+    ? `/admin/orders/${event.notification.data.orderId}`
+    : '/admin/dashboard';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow(urlToOpen);
+    })
+  );
 }); 

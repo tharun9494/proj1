@@ -6,12 +6,21 @@ import { CartProvider } from './context/CartContext';
 import Navbar from './components/Navbar';
 import AppRoutes from './routes';
 import Footer from './components/Footer';
+import NotificationHandler from './components/NotificationHandler';
+import Dashboard from './pages/Admin/Dashboard';
 
-function App() {
+const App: React.FC = () => {
+  const handleNewOrder = (orderId: string) => {
+    // Handle new order notification
+    console.log('New order received:', orderId);
+    // You can update your UI or fetch new data here
+  };
+
   return (
     <Router>
       <AuthProvider>
         <CartProvider>
+          <NotificationHandler onNewOrder={handleNewOrder} />
           <div className="min-h-screen flex flex-col bg-gray-50">
             <Navbar />
             <main className="flex-grow">
@@ -24,6 +33,6 @@ function App() {
       </AuthProvider>
     </Router>
   );
-}
+};
 
 export default App;

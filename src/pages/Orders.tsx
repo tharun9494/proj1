@@ -232,10 +232,31 @@ const Orders = () => {
                 </div>
 
                 <div className="mt-4 pt-4 border-t">
-                  <div className="flex justify-between">
-                    <p className="text-sm font-medium text-gray-900">Total Amount</p>
-                    <p className="text-sm font-medium text-gray-900">₹{order.totalAmount}</p>
-                  </div>
+                  {/* Calculate totals */}
+                  {(() => {
+                    const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    const deliveryCharges = itemTotal < 500 ? 40 : 0;
+                    const finalTotal = itemTotal + deliveryCharges;
+
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <p className="text-sm text-gray-600">Items Total</p>
+                          <p className="text-sm text-gray-600">₹{itemTotal}</p>
+                        </div>
+                        {deliveryCharges > 0 && (
+                          <div className="flex justify-between">
+                            <p className="text-sm text-gray-600">Delivery Charges</p>
+                            <p className="text-sm text-gray-600">₹{deliveryCharges}</p>
+                          </div>
+                        )}
+                        <div className="flex justify-between pt-2 border-t">
+                          <p className="text-sm font-medium text-gray-900">Total Amount</p>
+                          <p className="text-sm font-medium text-gray-900">₹{finalTotal}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </motion.div>
