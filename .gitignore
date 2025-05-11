@@ -23,3 +23,19 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Flutter
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+*.iml
+.idea/
+.vscode/
+
+# Firebase
+.firebase/
+firebase-debug.log
