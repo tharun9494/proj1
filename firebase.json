@@ -6,20 +6,6 @@
         "npm --prefix \"$RESOURCE_DIR\" run build"
       ],
       "codebase": "default"
-    },
-    {
-      "source": "funtions",
-      "codebase": "projt1",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint"
-      ]
     }
   ],
   "hosting": {
