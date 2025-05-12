@@ -56,6 +56,11 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // FCM Tokens collection rules
+    match /fcmTokens/{tokenId} {
+      allow read, write: if true; // Anyone can read/write for development. REMOVE BEFORE PRODUCTION.
+    }
+
     // Default deny for all other collections
     match /{document=**} {
       allow read, write: if false;

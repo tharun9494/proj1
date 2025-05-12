@@ -180,6 +180,8 @@ export const sendTestNotification = onRequest(async (req, res) => {
       .where('userId', '==', 'admin')
       .get();
 
+    console.log('Tokens query result:', tokensSnapshot.empty ? 'No tokens found' : `${tokensSnapshot.size} tokens found`);
+
     if (tokensSnapshot.empty) {
       res.status(400).json({ error: 'No admin tokens found' });
       return;
