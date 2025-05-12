@@ -1,21 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/firebase_messaging_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   
+  // Initialize Firebase Messaging Service
+  final firebaseMessaging = FirebaseMessagingService();
+  await firebaseMessaging.initialize();
+
   // Get and print FCM token
   String? token = await FirebaseMessaging.instance.getToken();
   print('==========================================');
   print('FCM TOKEN: $token');
   print('==========================================');
-  
-  // Initialize Firebase Messaging Service
-  final firebaseMessaging = FirebaseMessagingService();
-  await firebaseMessaging.initialize();
+
+  // Manually save token to Firestore
+  if (token != null) {
+    try {
+      await FirebaseFirestore.instance.collection('fcmTokens').add({
+        'token': token,
+        'userId': 'admin',
+        'platform': 'android',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      print('Token manually saved to Firestore');
+    } catch (e) {
+      print('Error manually saving token: $e');
+    }
+  }
 
   runApp(MyApp(token: token));
 }
@@ -64,6 +80,22 @@ class MyHomePage extends StatelessWidget {
               onPressed: () async {
                 String? newToken = await FirebaseMessaging.instance.getToken();
                 print('New FCM Token: $newToken');
+                
+                // Manually save the new token
+                if (newToken != null) {
+                  try {
+                    await FirebaseFirestore.instance.collection('fcmTokens').add({
+                      'token': newToken,
+                      'userId': 'admin',
+                      'platform': 'android',
+                      'updatedAt': FieldValue.serverTimestamp(),
+                    });
+                    print('New token manually saved to Firestore');
+                  } catch (e) {
+                    print('Error saving new token: $e');
+                  }
+                }
+                
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Token refreshed! Check console.')),
                 );

@@ -74,15 +74,36 @@ class FirebaseMessagingService {
 
   Future<void> _saveTokenToFirestore(String token) async {
     try {
-      await FirebaseFirestore.instance.collection('fcmTokens').add({
-        'token': token,
-        'userId': 'admin', // or your user ID
-        'platform': 'android',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      print('Token saved to Firestore successfully');
+      print('Attempting to save FCM token: $token');
+      
+      // Check if token already exists
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('fcmTokens')
+          .where('token', isEqualTo: token)
+          .get();
+
+      print('Existing tokens found: ${querySnapshot.docs.length}');
+
+      if (querySnapshot.docs.isEmpty) {
+        // Token doesn't exist, add new one
+        final docRef = await FirebaseFirestore.instance.collection('fcmTokens').add({
+          'token': token,
+          'userId': 'admin',
+          'platform': 'android',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        print('New token saved to Firestore successfully with ID: ${docRef.id}');
+      } else {
+        // Token exists, update it
+        await querySnapshot.docs.first.reference.update({
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        print('Existing token updated in Firestore with ID: ${querySnapshot.docs.first.id}');
+      }
     } catch (e) {
       print('Error saving token to Firestore: $e');
+      // Print the full error stack trace
+      print('Error stack trace: ${StackTrace.current}');
     }
   }
 

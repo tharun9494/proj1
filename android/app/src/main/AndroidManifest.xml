@@ -15,7 +15,7 @@
         
         <!-- FCM Service -->
         <service
-            android:name=".java.MyFirebaseMessagingService"
+            android:name=".MyFirebaseMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
@@ -25,7 +25,7 @@
         <!-- FCM Default Channel -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="high_importance_channel" />
+            android:value="orders" />
 
         <activity
             android:name=".MainActivity"
