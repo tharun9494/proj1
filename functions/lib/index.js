@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestNotification = exports.updateFCMToken = exports.sendOrderNotification = void 0;
+exports.checkFCMTokens = exports.sendTestNotification = exports.updateFCMToken = exports.sendOrderNotification = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
@@ -145,20 +145,40 @@ exports.updateFCMToken = (0, https_1.onRequest)(async (req, res) => {
 });
 // Test notification endpoint
 exports.sendTestNotification = (0, https_1.onRequest)(async (req, res) => {
-    const token = 'BCgCRt5u3_sJUQtBDh29MZmXuR9igNB4wiifQWcIy3PF-GM6UlQjFUNJO0eXpOcb8L1zPk7vcV0YzlHpacfrqrI';
-    const message = {
-        notification: {
-            title: 'Test Notification',
-            body: 'This is a test notification from Firebase!',
-        },
-        data: {
-            type: 'test',
-            click_action: 'FLUTTER_NOTIFICATION_CLICK',
-            timestamp: Date.now().toString(),
-        },
-        token: token,
-    };
     try {
+        // Get the latest admin token from Firestore
+        const tokensSnapshot = await admin.firestore()
+            .collection('fcmTokens')
+            .where('userId', '==', 'admin')
+            .get();
+        if (tokensSnapshot.empty) {
+            res.status(400).json({ error: 'No admin tokens found' });
+            return;
+        }
+        // Get the first token (we'll sort in memory)
+        const tokens = tokensSnapshot.docs.map(doc => ({
+            token: doc.data().token,
+            updatedAt: doc.data().updatedAt
+        }));
+        // Sort by updatedAt in memory
+        tokens.sort((a, b) => {
+            if (!a.updatedAt || !b.updatedAt)
+                return 0;
+            return b.updatedAt.toMillis() - a.updatedAt.toMillis();
+        });
+        const token = tokens[0].token;
+        const message = {
+            notification: {
+                title: 'Test Notification',
+                body: 'This is a test notification from Firebase!',
+            },
+            data: {
+                type: 'test',
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                timestamp: Date.now().toString(),
+            },
+            token: token,
+        };
         const response = await admin.messaging().send(message);
         console.log('Successfully sent notification:', response);
         res.json({ success: true, message: 'Notification sent successfully' });
@@ -166,6 +186,30 @@ exports.sendTestNotification = (0, https_1.onRequest)(async (req, res) => {
     catch (error) {
         console.error('Error sending notification:', error);
         res.status(500).json({ success: false, error: (error === null || error === void 0 ? void 0 : error.message) || 'Unknown error' });
+    }
+});
+// Function to check saved FCM tokens
+exports.checkFCMTokens = (0, https_1.onRequest)(async (req, res) => {
+    try {
+        const tokensSnapshot = await admin.firestore()
+            .collection('fcmTokens')
+            .get();
+        const tokens = tokensSnapshot.docs.map(doc => ({
+            id: doc.id,
+            token: doc.data().token,
+            userId: doc.data().userId,
+            platform: doc.data().platform,
+            updatedAt: doc.data().updatedAt ? doc.data().updatedAt.toDate() : null
+        }));
+        res.json({
+            success: true,
+            count: tokens.length,
+            tokens
+        });
+    }
+    catch (error) {
+        console.error('Error checking FCM tokens:', error);
+        res.status(500).json({ success: false, error: 'Failed to check tokens' });
     }
 });
 //# sourceMappingURL=index.js.map
