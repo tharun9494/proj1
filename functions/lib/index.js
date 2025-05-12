@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateFCMToken = exports.sendOrderNotification = void 0;
+exports.sendTestNotification = exports.updateFCMToken = exports.sendOrderNotification = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
@@ -18,7 +18,7 @@ exports.sendOrderNotification = (0, firestore_1.onDocumentCreated)('orders/{orde
     const itemsSummary = orderData.items
         .map(item => `${item.quantity}x ${item.name}`)
         .join(', ');
-    // Notification payload with different formats for web and mobile
+    // Notification payload for mobile
     const payload = {
         notification: {
             title: 'New Order Received! 🔔',
@@ -33,26 +33,24 @@ exports.sendOrderNotification = (0, firestore_1.onDocumentCreated)('orders/{orde
             timestamp: admin.firestore.Timestamp.now().toMillis().toString(),
             click_action: 'FLUTTER_NOTIFICATION_CLICK',
         },
-        webpush: {
+        android: {
+            priority: 'high',
             notification: {
-                icon: '/logo192.png',
-                badge: '/logo192.png',
-                requireInteraction: true,
-                actions: [
-                    {
-                        action: 'view_order',
-                        title: 'View Order',
-                    },
-                    {
-                        action: 'call_customer',
-                        title: 'Call Customer',
-                    },
-                ],
+                sound: 'default',
+                default_sound: true,
+                default_vibrate_timings: true,
+                default_light_settings: true,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
             },
-            fcmOptions: {
-                link: `/admin/orders/${orderId}`,
+        },
+        apns: {
+            payload: {
+                aps: {
+                    sound: 'default',
+                    badge: 1,
+                },
             },
-        }
+        },
     };
     try {
         // Get all admin tokens
@@ -143,6 +141,31 @@ exports.updateFCMToken = (0, https_1.onRequest)(async (req, res) => {
     catch (error) {
         console.error('Error updating FCM token:', error);
         res.status(500).json({ error: 'Failed to update FCM token' });
+    }
+});
+// Test notification endpoint
+exports.sendTestNotification = (0, https_1.onRequest)(async (req, res) => {
+    const token = 'BCgCRt5u3_sJUQtBDh29MZmXuR9igNB4wiifQWcIy3PF-GM6UlQjFUNJO0eXpOcb8L1zPk7vcV0YzlHpacfrqrI';
+    const message = {
+        notification: {
+            title: 'Test Notification',
+            body: 'This is a test notification from Firebase!',
+        },
+        data: {
+            type: 'test',
+            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            timestamp: Date.now().toString(),
+        },
+        token: token,
+    };
+    try {
+        const response = await admin.messaging().send(message);
+        console.log('Successfully sent notification:', response);
+        res.json({ success: true, message: 'Notification sent successfully' });
+    }
+    catch (error) {
+        console.error('Error sending notification:', error);
+        res.status(500).json({ success: false, error: (error === null || error === void 0 ? void 0 : error.message) || 'Unknown error' });
     }
 });
 //# sourceMappingURL=index.js.map

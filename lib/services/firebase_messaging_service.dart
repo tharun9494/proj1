@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class FirebaseMessagingService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
@@ -13,6 +14,19 @@ class FirebaseMessagingService {
       badge: true,
       sound: true,
     );
+
+    // Get FCM token and save it
+    String? token = await _firebaseMessaging.getToken();
+    if (token != null) {
+      print('FCM Token: $token'); // For debugging
+      await _saveTokenToFirestore(token);
+    }
+
+    // Listen for token refresh
+    _firebaseMessaging.onTokenRefresh.listen((newToken) {
+      print('New FCM Token: $newToken'); // For debugging
+      _saveTokenToFirestore(newToken);
+    });
 
     // Initialize local notifications
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -44,6 +58,7 @@ class FirebaseMessagingService {
 
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      print('Received foreground message: ${message.messageId}'); // For debugging
       _showNotification(message);
     });
 
@@ -55,6 +70,20 @@ class FirebaseMessagingService {
 
     // Subscribe to admin topic for order notifications
     await _firebaseMessaging.subscribeToTopic('admin');
+  }
+
+  Future<void> _saveTokenToFirestore(String token) async {
+    try {
+      await FirebaseFirestore.instance.collection('fcmTokens').add({
+        'token': token,
+        'userId': 'admin', // or your user ID
+        'platform': 'android',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      print('Token saved to Firestore successfully');
+    } catch (e) {
+      print('Error saving token to Firestore: $e');
+    }
   }
 
   Future<void> _showNotification(RemoteMessage message) async {

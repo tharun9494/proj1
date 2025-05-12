@@ -24,18 +24,43 @@ dist-ssr
 *.sw?
 .vercel
 
-# Flutter
-build/
+# Flutter/Dart specific
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
 .pub-cache/
 .pub/
-*.iml
-.idea/
-.vscode/
+build/
+ios/Pods/
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
 
-# Firebase
+# Firebase specific
 .firebase/
 firebase-debug.log
+firebase-debug.*.log
+.runtimeconfig.json
+
+# IDE specific
+.idea/
+.vscode/
+*.iml
+*.iws
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# Coverage
+coverage/
+*.lcov
