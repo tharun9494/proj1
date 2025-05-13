@@ -32,6 +32,8 @@ class FirebaseMessagingService {
         print('Attempting to save token to Firestore...');
         // Get current user ID
         final user = FirebaseAuth.instance.currentUser;
+        print('Current user: ${user?.uid}');
+        
         if (user == null) {
           print('ERROR: No user logged in when trying to save FCM token');
           return;
