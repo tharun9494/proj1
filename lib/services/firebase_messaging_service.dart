@@ -2,13 +2,15 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 class FirebaseMessagingService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
   Future<void> initialize() async {
-    try {
+      try {
       print('Starting Firebase Messaging initialization...');
 
       // Request permission for iOS
@@ -28,7 +30,16 @@ class FirebaseMessagingService {
 
       if (token != null) {
         print('Attempting to save token to Firestore...');
-        await _saveTokenToFirestore(token);
+        // Get current user ID
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          print('ERROR: No user logged in when trying to save FCM token');
+          return;
+        }
+        print('Current user ID: ${user.uid}');
+        
+        // Save token with user ID
+        await _saveTokenToFirestore(token, user.uid);
       } else {
         print('WARNING: No FCM token received from Firebase!');
       }
@@ -36,7 +47,12 @@ class FirebaseMessagingService {
       // Listen for token refresh
       _firebaseMessaging.onTokenRefresh.listen((newToken) async {
         print('Token refresh detected. New token: $newToken');
-        await _saveTokenToFirestore(newToken);
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await _saveTokenToFirestore(newToken, user.uid);
+        } else {
+          print('ERROR: No user logged in during token refresh');
+        }
       });
 
       // Initialize local notifications
@@ -104,39 +120,58 @@ class FirebaseMessagingService {
     }
   }
 
-  Future<void> _saveTokenToFirestore(String token) async {
+  Future<void> _saveTokenToFirestore(String token, String userId) async {
     try {
       print('Starting token save process...');
       print('Token to save: $token');
+      print('User ID: $userId');
       
-      // First, check for any existing tokens
-      print('Checking for existing tokens...');
-      final existingTokensQuery = await FirebaseFirestore.instance
-          .collection('fcmTokens')
-          .where('userId', isEqualTo: 'admin')
-          .get();
-
-      print('Found ${existingTokensQuery.docs.length} existing tokens');
-
-      // Delete any old tokens
-      for (var doc in existingTokensQuery.docs) {
-        print('Deleting old token: ${doc.id}');
-        await doc.reference.delete();
-      }
-
-      // Add the new token
+      // Add the new token directly without checking for existing ones
       print('Adding new token to Firestore...');
       final docRef = await FirebaseFirestore.instance.collection('fcmTokens').add({
         'token': token,
-        'userId': 'admin',
-        'platform': 'android',
+        'userId': userId,
+        'platform': Platform.isAndroid ? 'android' : 'ios',
         'updatedAt': FieldValue.serverTimestamp(),
       });
       
       print('Token saved successfully with ID: ${docRef.id}');
+
+      // Verify the token was saved
+      final savedToken = await FirebaseFirestore.instance
+          .collection('fcmTokens')
+          .doc(docRef.id)
+          .get();
+      
+      print('Verified saved token: ${savedToken.data()}');
+
+      // Clean up old tokens after successful save
+      final oldTokens = await FirebaseFirestore.instance
+          .collection('fcmTokens')
+          .where('userId', isEqualTo: userId)
+          .where('token', isNotEqualTo: token)
+          .get();
+
+      for (var doc in oldTokens.docs) {
+        print('Cleaning up old token: ${doc.id}');
+        await doc.reference.delete();
+      }
     } catch (e) {
       print('ERROR saving token to Firestore: $e');
       print('Error stack trace: ${StackTrace.current}');
+      // Try to save token again with retry
+      await Future.delayed(Duration(seconds: 2));
+      try {
+        await FirebaseFirestore.instance.collection('fcmTokens').add({
+          'token': token,
+          'userId': userId,
+          'platform': Platform.isAndroid ? 'android' : 'ios',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        print('Token saved successfully on retry');
+      } catch (retryError) {
+        print('ERROR saving token on retry: $retryError');
+      }
     }
   }
 

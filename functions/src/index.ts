@@ -203,28 +203,41 @@ export const updateFCMToken = functions.https.onRequest(async (req, res) => {
     const { token, userId, platform = 'web' } = req.body;
 
     if (!token || !userId) {
-      return res.status(400).json({ error: 'Token and userId are required' });
+      res.status(400).json({ error: 'Token and userId are required' });
+      return;
     }
 
-    // Delete any existing tokens for this user
-    const existingTokens = await admin.firestore()
-      .collection('fcmTokens')
-      .where('userId', '==', userId)
-      .get();
-
-    for (const doc of existingTokens.docs) {
-      await doc.ref.delete();
-    }
+    console.log(`Updating FCM token for user ${userId}`);
 
     // Add the new token
-    await admin.firestore().collection('fcmTokens').add({
+    const tokenRef = await admin.firestore().collection('fcmTokens').add({
       token,
       userId,
       platform,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    res.json({ success: true, message: 'Token updated successfully' });
+    console.log(`Token saved with ID: ${tokenRef.id}`);
+
+    // Clean up old tokens
+    const oldTokens = await admin.firestore()
+      .collection('fcmTokens')
+      .where('userId', '==', userId)
+      .where('token', '!=', token)
+      .get();
+
+    console.log(`Found ${oldTokens.size} old tokens to clean up`);
+
+    const deletePromises = oldTokens.docs.map(doc => doc.ref.delete());
+    await Promise.all(deletePromises);
+
+    console.log('Old tokens cleaned up successfully');
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Token updated successfully',
+      tokenId: tokenRef.id
+    });
   } catch (error) {
     console.error('Error updating token:', error);
     res.status(500).json({ success: false, error: 'Failed to update token' });
