@@ -8,137 +8,174 @@ class FirebaseMessagingService {
   final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
   Future<void> initialize() async {
-    // Request permission for iOS
-    await _firebaseMessaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    try {
+      print('Starting Firebase Messaging initialization...');
 
-    // Get FCM token and save it
-    String? token = await _firebaseMessaging.getToken();
-    if (token != null) {
-      print('FCM Token: $token'); // For debugging
-      await _saveTokenToFirestore(token);
+      // Request permission for iOS
+      NotificationSettings settings = await _firebaseMessaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+
+      print('Notification permission status: ${settings.authorizationStatus}');
+
+      // Get FCM token and save it
+      print('Requesting FCM token...');
+      String? token = await _firebaseMessaging.getToken();
+      print('FCM Token received: ${token ?? "No token received"}');
+
+      if (token != null) {
+        print('Attempting to save token to Firestore...');
+        await _saveTokenToFirestore(token);
+      } else {
+        print('WARNING: No FCM token received from Firebase!');
+      }
+
+      // Listen for token refresh
+      _firebaseMessaging.onTokenRefresh.listen((newToken) async {
+        print('Token refresh detected. New token: $newToken');
+        await _saveTokenToFirestore(newToken);
+      });
+
+      // Initialize local notifications
+      print('Initializing local notifications...');
+      const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const DarwinInitializationSettings iOSSettings = DarwinInitializationSettings(
+        requestSoundPermission: true,
+        requestBadgePermission: true,
+        requestAlertPermission: true,
+      );
+      
+      const InitializationSettings initSettings = InitializationSettings(
+        android: androidSettings,
+        iOS: iOSSettings,
+      );
+
+      await _flutterLocalNotificationsPlugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (details) {
+          print('Notification tapped with payload: ${details.payload}');
+        },
+      );
+      print('Local notifications initialized successfully');
+
+      // Create notification channel for Android
+      print('Creating Android notification channel...');
+      await _flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(const AndroidNotificationChannel(
+            'orders',
+            'Order Notifications',
+            description: 'Notifications for new orders',
+            importance: Importance.max,
+            enableVibration: true,
+            playSound: true,
+          ));
+      print('Android notification channel created');
+
+      // Handle background messages
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      print('Background message handler registered');
+
+      // Handle foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        print('Received foreground message: ${message.messageId}');
+        print('Message data: ${message.data}');
+        print('Message notification: ${message.notification?.title}');
+        _showNotification(message);
+      });
+
+      // Handle when app is opened from notification
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        print('Notification opened app: ${message.data}');
+      });
+
+      // Subscribe to admin topic
+      print('Subscribing to admin topic...');
+      await _firebaseMessaging.subscribeToTopic('admin');
+      print('Successfully subscribed to admin topic');
+
+      print('Firebase Messaging initialization completed successfully');
+    } catch (e) {
+      print('ERROR in Firebase Messaging initialization: $e');
+      print('Error stack trace: ${StackTrace.current}');
     }
-
-    // Listen for token refresh
-    _firebaseMessaging.onTokenRefresh.listen((newToken) {
-      print('New FCM Token: $newToken'); // For debugging
-      _saveTokenToFirestore(newToken);
-    });
-
-    // Initialize local notifications
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings iOSSettings = DarwinInitializationSettings(
-      requestSoundPermission: true,
-      requestBadgePermission: true,
-      requestAlertPermission: true,
-    );
-    
-    const InitializationSettings initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iOSSettings,
-    );
-
-    await _flutterLocalNotificationsPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (details) {
-        // Handle notification tap
-        final payload = details.payload;
-        if (payload != null) {
-          // Navigate to order details or handle the action
-          print('Notification payload: $payload');
-        }
-      },
-    );
-
-    // Handle background messages
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('Received foreground message: ${message.messageId}'); // For debugging
-      _showNotification(message);
-    });
-
-    // Handle when app is opened from notification
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('Notification opened app: ${message.data}');
-      // Navigate to appropriate screen based on the notification
-    });
-
-    // Subscribe to admin topic for order notifications
-    await _firebaseMessaging.subscribeToTopic('admin');
   }
 
   Future<void> _saveTokenToFirestore(String token) async {
     try {
-      print('Attempting to save FCM token: $token');
+      print('Starting token save process...');
+      print('Token to save: $token');
       
-      // Check if token already exists
-      final querySnapshot = await FirebaseFirestore.instance
+      // First, check for any existing tokens
+      print('Checking for existing tokens...');
+      final existingTokensQuery = await FirebaseFirestore.instance
           .collection('fcmTokens')
-          .where('token', isEqualTo: token)
+          .where('userId', isEqualTo: 'admin')
           .get();
 
-      print('Existing tokens found: ${querySnapshot.docs.length}');
+      print('Found ${existingTokensQuery.docs.length} existing tokens');
 
-      if (querySnapshot.docs.isEmpty) {
-        // Token doesn't exist, add new one
-        final docRef = await FirebaseFirestore.instance.collection('fcmTokens').add({
-          'token': token,
-          'userId': 'admin',
-          'platform': 'android',
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        print('New token saved to Firestore successfully with ID: ${docRef.id}');
-      } else {
-        // Token exists, update it
-        await querySnapshot.docs.first.reference.update({
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        print('Existing token updated in Firestore with ID: ${querySnapshot.docs.first.id}');
+      // Delete any old tokens
+      for (var doc in existingTokensQuery.docs) {
+        print('Deleting old token: ${doc.id}');
+        await doc.reference.delete();
       }
+
+      // Add the new token
+      print('Adding new token to Firestore...');
+      final docRef = await FirebaseFirestore.instance.collection('fcmTokens').add({
+        'token': token,
+        'userId': 'admin',
+        'platform': 'android',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      
+      print('Token saved successfully with ID: ${docRef.id}');
     } catch (e) {
-      print('Error saving token to Firestore: $e');
-      // Print the full error stack trace
+      print('ERROR saving token to Firestore: $e');
       print('Error stack trace: ${StackTrace.current}');
     }
   }
 
   Future<void> _showNotification(RemoteMessage message) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'orders', // channel id
-      'Order Notifications', // channel name
-      channelDescription: 'Notifications for new orders',
-      importance: Importance.max,
-      priority: Priority.high,
-      sound: RawResourceAndroidNotificationSound('notification'),
-      playSound: true,
-      enableVibration: true,
-      enableLights: true,
-    );
+    try {
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'orders',
+        'Order Notifications',
+        channelDescription: 'Notifications for new orders',
+        importance: Importance.max,
+        priority: Priority.high,
+        playSound: true,
+        enableVibration: true,
+        enableLights: true,
+        showWhen: true,
+      );
 
-    const DarwinNotificationDetails iOSDetails = DarwinNotificationDetails(
-      presentSound: true,
-      presentBadge: true,
-      presentAlert: true,
-      sound: 'notification.mp3',
-    );
+      const DarwinNotificationDetails iOSDetails = DarwinNotificationDetails(
+        presentSound: true,
+        presentBadge: true,
+        presentAlert: true,
+      );
 
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iOSDetails,
-    );
+      const NotificationDetails notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iOSDetails,
+      );
 
-    await _flutterLocalNotificationsPlugin.show(
-      message.hashCode,
-      message.notification?.title ?? 'New Order',
-      message.notification?.body ?? '',
-      notificationDetails,
-      payload: message.data.toString(),
-    );
+      await _flutterLocalNotificationsPlugin.show(
+        message.hashCode,
+        message.notification?.title ?? 'New Order',
+        message.notification?.body ?? '',
+        notificationDetails,
+        payload: message.data.toString(),
+      );
+      print('Notification shown successfully');
+    } catch (e) {
+      print('Error showing notification: $e');
+    }
   }
 }
 
@@ -147,5 +184,52 @@ class FirebaseMessagingService {
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print('Handling background message: ${message.messageId}');
-  // You can also show a notification here if needed
+  print('Background message data: ${message.data}');
+  print('Background message notification: ${message.notification?.title}');
+
+  // Initialize notifications plugin
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  
+  // Initialize Android settings
+  const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initSettings = InitializationSettings(android: androidSettings);
+  
+  await flutterLocalNotificationsPlugin.initialize(initSettings);
+
+  // Create notification channel
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(const AndroidNotificationChannel(
+        'orders',
+        'Order Notifications',
+        description: 'Notifications for new orders',
+        importance: Importance.max,
+        enableVibration: true,
+        playSound: true,
+      ));
+
+  // Show the notification
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'orders',
+    'Order Notifications',
+    channelDescription: 'Notifications for new orders',
+    importance: Importance.max,
+    priority: Priority.high,
+    playSound: true,
+    enableVibration: true,
+    enableLights: true,
+    showWhen: true,
+  );
+
+  const NotificationDetails notificationDetails = NotificationDetails(
+    android: androidDetails,
+  );
+
+  await flutterLocalNotificationsPlugin.show(
+    message.hashCode,
+    message.notification?.title ?? 'New Order',
+    message.notification?.body ?? '',
+    notificationDetails,
+    payload: message.data.toString(),
+  );
 } 
