@@ -2,6 +2,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { DocumentSnapshot } from 'firebase-admin/firestore';
+import * as functions from 'firebase-functions';
 
 admin.initializeApp();
 
@@ -14,6 +15,15 @@ interface OrderData {
   customerName?: string;
   customerPhone?: string;
   status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  userId?: string;
+}
+
+interface TokenData {
+  id: string;
+  token: string;
+  userId: string;
+  platform: string;
+  updatedAt: admin.firestore.Timestamp | null;
 }
 
 // Send notification when new order is created
@@ -26,6 +36,12 @@ export const sendOrderNotification = onDocumentCreated('orders/{orderId}', async
 
   const orderData = snapshot.data() as OrderData;
   const orderId = snapshot.id;
+  const userId = orderData.userId; // Get the userId from the order
+
+  if (!userId) {
+    console.error('No userId found in order data');
+    return;
+  }
 
   // Create a detailed message for the notification
   const itemsSummary = orderData.items
@@ -35,8 +51,8 @@ export const sendOrderNotification = onDocumentCreated('orders/{orderId}', async
   // Notification payload for mobile
   const payload = {
     notification: {
-      title: 'New Order Received! 🔔',
-      body: `Order #${orderId} - ${orderData.customerName || 'New customer'}\nTotal: $${orderData.totalAmount.toFixed(2)}`,
+      title: 'Order Confirmed! 🎉',
+      body: `Your order #${orderId} has been received!\nTotal: $${orderData.totalAmount.toFixed(2)}`,
     },
     data: {
       orderId: orderId,
@@ -68,10 +84,10 @@ export const sendOrderNotification = onDocumentCreated('orders/{orderId}', async
   };
 
   try {
-    // Get all admin tokens
+    // Get tokens for the user who placed the order
     const tokensSnapshot = await admin.firestore()
       .collection('fcmTokens')
-      .where('userId', '==', 'admin')
+      .where('userId', '==', userId)
       .get();
 
     const tokens: string[] = [];
@@ -81,11 +97,13 @@ export const sendOrderNotification = onDocumentCreated('orders/{orderId}', async
     });
 
     if (tokens.length === 0) {
-      console.warn('No admin tokens found for notification delivery');
+      console.warn(`No tokens found for user ${userId}`);
       return;
     }
 
-    // Send notifications to all admin devices
+    console.log(`Sending notification to user ${userId} with ${tokens.length} tokens`);
+
+    // Send notifications to all user devices
     const response = await admin.messaging().sendEachForMulticast({
       tokens,
       ...payload,
@@ -117,6 +135,7 @@ export const sendOrderNotification = onDocumentCreated('orders/{orderId}', async
 
     // Log results
     console.info('Notification sending results:', {
+      userId,
       success: response.successCount,
       failure: response.failureCount,
       tokens: tokens.length,
@@ -135,39 +154,80 @@ export const sendOrderNotification = onDocumentCreated('orders/{orderId}', async
   }
 });
 
-// Function to handle token updates
-export const updateFCMToken = onRequest(async (req, res) => {
+// Function to clean up duplicate tokens
+export const cleanupDuplicateTokens = functions.https.onRequest(async (req, res) => {
   try {
-    const { token, userId, platform } = req.body;
+    const tokensSnapshot = await admin.firestore().collection('fcmTokens').get();
+    const tokens = tokensSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as TokenData[];
+
+    // Group tokens by userId
+    const tokensByUser: Record<string, TokenData[]> = tokens.reduce((acc, token) => {
+      if (!acc[token.userId]) {
+        acc[token.userId] = [];
+      }
+      acc[token.userId].push(token);
+      return acc;
+    }, {} as Record<string, TokenData[]>);
+
+    // Keep only the most recent token for each user
+    for (const [userId, userTokens] of Object.entries(tokensByUser)) {
+      if (userTokens.length > 1) {
+        // Sort by updatedAt (most recent first)
+        const sortedTokens = userTokens.sort((a, b) => {
+          const dateA = a.updatedAt?.toDate() || new Date(0);
+          const dateB = b.updatedAt?.toDate() || new Date(0);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        // Keep the most recent token, delete others
+        const [keepToken, ...deleteTokens] = sortedTokens;
+        for (const token of deleteTokens) {
+          await admin.firestore().collection('fcmTokens').doc(token.id).delete();
+        }
+      }
+    }
+
+    res.json({ success: true, message: 'Duplicate tokens cleaned up successfully' });
+  } catch (error) {
+    console.error('Error cleaning up tokens:', error);
+    res.status(500).json({ success: false, error: 'Failed to clean up tokens' });
+  }
+});
+
+// Update the updateFCMToken function
+export const updateFCMToken = functions.https.onRequest(async (req, res) => {
+  try {
+    const { token, userId, platform = 'web' } = req.body;
 
     if (!token || !userId) {
-      res.status(400).json({ error: 'Token and userId are required' });
-      return;
+      return res.status(400).json({ error: 'Token and userId are required' });
     }
 
-    const tokenData = {
-      userId,
-      token,
-      platform: platform || 'web',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    // Check if token already exists
-    const existingToken = await admin.firestore()
+    // Delete any existing tokens for this user
+    const existingTokens = await admin.firestore()
       .collection('fcmTokens')
-      .where('token', '==', token)
+      .where('userId', '==', userId)
       .get();
 
-    if (existingToken.empty) {
-      await admin.firestore().collection('fcmTokens').add(tokenData);
-    } else {
-      await existingToken.docs[0].ref.set(tokenData, { merge: true });
+    for (const doc of existingTokens.docs) {
+      await doc.ref.delete();
     }
 
-    res.json({ success: true });
+    // Add the new token
+    await admin.firestore().collection('fcmTokens').add({
+      token,
+      userId,
+      platform,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.json({ success: true, message: 'Token updated successfully' });
   } catch (error) {
-    console.error('Error updating FCM token:', error);
-    res.status(500).json({ error: 'Failed to update FCM token' });
+    console.error('Error updating token:', error);
+    res.status(500).json({ success: false, error: 'Failed to update token' });
   }
 });
 
