@@ -87,24 +87,49 @@ const Cart = () => {
 
   useEffect(() => {
     const statusRef = doc(db, 'restaurant', 'status');
+    let retryCount = 0;
+    const maxRetries = 3;
     
-    // Listen for status changes
-    const unsubscribe = onSnapshot(statusRef, 
-      (doc) => {
-        if (doc.exists()) {
-          const data = doc.data();
-          setRestaurantStatus({
-            isOpen: data.isOpen,
-            lastUpdated: data.lastUpdated
-          });
-        }
-      },
-      (error) => {
-        console.error('Error listening to restaurant status:', error);
-      }
-    );
+    const setupListener = () => {
+      try {
+        const unsubscribe = onSnapshot(
+          statusRef,
+          (doc) => {
+            if (doc.exists()) {
+              const data = doc.data();
+              setRestaurantStatus({
+                isOpen: data.isOpen,
+                lastUpdated: data.lastUpdated
+              });
+            }
+          },
+          (error) => {
+            console.error('Error listening to restaurant status:', error);
+            if (retryCount < maxRetries) {
+              retryCount++;
+              console.log(`Retrying connection (${retryCount}/${maxRetries})...`);
+              setTimeout(setupListener, 2000); // Retry after 2 seconds
+            } else {
+              toast.error('Unable to connect to the server. Please check your internet connection.');
+            }
+          }
+        );
 
-    return () => unsubscribe();
+        return unsubscribe;
+      } catch (error) {
+        console.error('Error setting up listener:', error);
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(setupListener, 2000);
+        }
+        return () => {};
+      }
+    };
+
+    const unsubscribe = setupListener();
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   React.useEffect(() => {
@@ -298,12 +323,17 @@ const Cart = () => {
       return;
     }
 
+    if (!address.phone) {
+      toast.error('Please enter a valid phone number');
+      return;
+    }
+
     try {
       setIsProcessing(true);
       const orderRef = collection(db, 'orders');
       const batch = writeBatch(db);
 
-      // Create order document
+      // Create order document with all required data
       const orderData = {
         userId: user.id,
         items: items.map(item => ({
@@ -311,35 +341,47 @@ const Cart = () => {
           name: item.name,
           price: item.price,
           quantity: item.quantity,
-          isVeg: item.isVeg || false // Add default value for isVeg
+          isVeg: item.isVeg || false
         })),
-        totalAmount: totalAmount,
+        totalAmount: finalAmount,
         status: 'pending',
         createdAt: serverTimestamp(),
         userName: user.name || 'Guest',
-        userPhone: user.phone || '',
+        userPhone: address.phone,
+        alternativePhone: address.alternativePhone || '',
         address: {
-          street: '',
-          city: '',
-          pincode: '',
+          street: address.street,
+          city: address.city,
+          pincode: address.pincode,
+          landmark: address.landmark || ''
         },
         paymentStatus: 'pending',
-        paymentMethod: 'COD'
+        paymentMethod: paymentMethod,
+        deliveryFee: deliveryFee,
+        gst: {
+          CGST: gstAmounts.CGST,
+          SGST: gstAmounts.SGST
+        },
+        discount: discountAmount,
+        expectedDelivery: calculateExpectedDelivery()
       };
 
       const orderDocRef = doc(orderRef);
       batch.set(orderDocRef, orderData);
 
-      // Update orderCount for each item
-      items.forEach(item => {
+      // Update orderCount for each item in parallel
+      const itemUpdates = items.map(item => {
         const itemRef = doc(db, 'menuItems', item.id);
-        batch.update(itemRef, {
+        return batch.update(itemRef, {
           orderCount: increment(1)
         });
       });
 
+      // Commit all changes in a single batch
       await batch.commit();
-      clearCart();
+
+      // Clear cart and navigate only after successful order placement
+      await clearCart();
       toast.success('Order placed successfully!');
       navigate('/orders');
     } catch (error) {
@@ -348,6 +390,11 @@ const Cart = () => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Add error boundary for image loading
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.currentTarget.src = 'https://via.placeholder.com/150?text=Food+Image';
   };
 
   if (items.length === 0) {
@@ -386,9 +433,10 @@ const Cart = () => {
                   >
                     <div className="flex items-center">
                       <img
-                        src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}
+                        src={item.image || 'https://via.placeholder.com/150?text=Food+Image'}
                         alt={item.name}
                         className="w-20 h-20 md:w-24 md:h-24 object-cover rounded-lg"
+                        onError={handleImageError}
                       />
                       <div className="ml-3 md:ml-6 flex-1">
                         <div className="flex items-center justify-between">
