@@ -8,6 +8,7 @@ import AppRoutes from './routes';
 import Footer from './components/Footer';
 import NotificationHandler from './components/NotificationHandler';
 import Dashboard from './pages/Admin/Dashboard';
+import OrderManagement from './components/OrderManagement';
 
 const App: React.FC = () => {
   const handleNewOrder = (orderId: string) => {
@@ -23,8 +24,14 @@ const App: React.FC = () => {
           <NotificationHandler onNewOrder={handleNewOrder} />
           <div className="min-h-screen flex flex-col bg-gray-50">
             <Navbar />
-            <main className="flex-grow">
+            <main className="flex-grow container mx-auto px-4 py-8">
               <AppRoutes />
+              {/* Only show OrderManagement for admin users */}
+              {localStorage.getItem('userRole') === 'admin' && (
+                <div className="mt-8">
+                  <OrderManagement />
+                </div>
+              )}
             </main>
             <Footer />
             <Toaster position="bottom-center" />

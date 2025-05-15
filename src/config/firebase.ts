@@ -9,6 +9,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyCRKNc4sMLeQjh1p3QcXw5dgTWBBoLL6xc",
   projectId: "pittas-fb2a8",
   messagingSenderId: "215585759764",
+  storageBucket: "pittas-fb2a8.firebasestorage.app",
   appId: "1:215585759764:android:d1cef04e916bf7e1b27d01",
   vapidKey: "BCgCRt5u3_sJUQtBDh29MZmXuR9igNB4wiifQWcIy3PF-GM6UlQjFUNJO0eXpOcb8L1zPk7vcV0YzlHpacfrqrI"
 };

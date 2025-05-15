@@ -1,11 +1,14 @@
 require('dotenv').config();
 const twilio = require('twilio');
+import axios from 'axios';
 
 // Initialize Twilio client
 const client = twilio(
     process.env.TWILIO_ACCOUNT_SID,
     process.env.TWILIO_AUTH_TOKEN
 );
+
+const API_BASE_URL = 'http://localhost:5001/api';
 
 /**
  * Trigger a call to admin when an order is placed
@@ -35,6 +38,32 @@ async function notifyAdminOnOrder(orderDetails) {
     }
 }
 
+export const sendSMS = async (to, message) => {
+    try {
+        const response = await axios.post(`${API_BASE_URL}/send-sms`, {
+            to,
+            message
+        });
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error.message;
+    }
+};
+
+export const makeCall = async (to, twimlUrl) => {
+    try {
+        const response = await axios.post(`${API_BASE_URL}/make-call`, {
+            to,
+            twimlUrl
+        });
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error.message;
+    }
+};
+
 module.exports = {
-    notifyAdminOnOrder
+    notifyAdminOnOrder,
+    sendSMS,
+    makeCall
 }; 

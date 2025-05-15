@@ -1,190 +1,110 @@
-import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy, Timestamp, serverTimestamp } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { Order, OrderStats } from '../types/order';
-import { sendNotificationToAdmin } from './notificationService';
+import axios, { AxiosError } from 'axios';
 
-export const createOrder = async (orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
-  try {
-    const ordersRef = collection(db, 'orders');
-    const docRef = await addDoc(ordersRef, {
-      ...orderData,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
+// Use environment variable for API URL, fallback to default
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/orders';
 
-    // Send notification to admin
-    await sendNotificationToAdmin({
-      title: 'New Order Received! 🍽️',
-      body: `Order #${docRef.id.slice(-6)} - ₹${orderData.totalAmount} - ${orderData.userName}`,
-      data: {
-        orderId: docRef.id,
-        phoneNumber: orderData.userPhone,
-        action: 'view_order'
-      }
-    });
+// Create axios instance with default config
+const api = axios.create({
+    baseURL: API_BASE_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+    withCredentials: true // Enable sending cookies
+});
 
-    return docRef.id;
-  } catch (error) {
-    console.error('Error creating order:', error);
-    throw error;
-  }
-};
+// Add request interceptor for authentication
+api.interceptors.request.use(
+    (config) => {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
 
-interface PaymentDetails {
-  status: 'success' | 'failed';
-  paymentId: string;
-  orderId: string;
-  signature: string;
+// Add response interceptor for error handling
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            // Handle unauthorized access
+            localStorage.removeItem('authToken');
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
+
+export interface Order {
+    id: string;
+    status: string;
+    [key: string]: any;
 }
 
-export const updateOrderStatus = async (orderId: string, paymentDetails: PaymentDetails) => {
-  try {
-    const orderRef = doc(db, 'orders', orderId);
-    await updateDoc(orderRef, {
-      status: paymentDetails.status,
-      paymentId: paymentDetails.paymentId,
-      razorpayOrderId: paymentDetails.orderId,
-      razorpaySignature: paymentDetails.signature,
-      updatedAt: serverTimestamp()
-    });
-    return true;
-  } catch (error) {
-    console.error('Update order status error:', error);
-    throw error;
-  }
+// Create a new order
+export const placeOrder = async (orderData: Partial<Order>): Promise<Order> => {
+    try {
+        const response = await api.post('/place', orderData);
+        return response.data;
+    } catch (error) {
+        if (error instanceof AxiosError) {
+            throw error.response?.data || error.message;
+        }
+        throw new Error('An unexpected error occurred');
+    }
 };
 
-export const getTodayOrders = async () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const ordersRef = collection(db, 'orders');
-  const q = query(
-    ordersRef,
-    where('createdAt', '>=', today),
-    orderBy('createdAt', 'desc')
-  );
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs
-    .map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }))
-    .filter(order => order.paymentStatus === 'success') as Order[];
+// Get all orders
+export const getAllOrders = async (): Promise<Order[]> => {
+    try {
+        const response = await api.get('/');
+        return response.data;
+    } catch (error) {
+        if (error instanceof AxiosError) {
+            throw error.response?.data || error.message;
+        }
+        throw new Error('An unexpected error occurred');
+    }
 };
 
-export const getCompletedOrders = async () => {
-  const ordersRef = collection(db, 'orders');
-  const q = query(
-    ordersRef,
-    where('status', '==', 'completed'),
-    orderBy('createdAt', 'desc')
-  );
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  })) as Order[];
+// Get order by ID
+export const getOrderById = async (orderId: string): Promise<Order> => {
+    try {
+        const response = await api.get(`/${orderId}`);
+        return response.data;
+    } catch (error) {
+        if (error instanceof AxiosError) {
+            throw error.response?.data || error.message;
+        }
+        throw new Error('An unexpected error occurred');
+    }
 };
 
-export const getPastOrders = async () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const ordersRef = collection(db, 'orders');
-  const q = query(
-    ordersRef,
-    where('createdAt', '<', today),
-    orderBy('createdAt', 'desc')
-  );
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  })) as Order[];
+// Update order status
+export const updateOrderStatus = async (orderId: string, status: string): Promise<Order> => {
+    try {
+        const response = await api.patch(`/${orderId}/status`, { status });
+        return response.data;
+    } catch (error) {
+        if (error instanceof AxiosError) {
+            throw error.response?.data || error.message;
+        }
+        throw new Error('An unexpected error occurred');
+    }
 };
 
-export const getOrderStats = async (): Promise<OrderStats> => {
-  const now = new Date();
-  const startOfDay = new Date(now.setHours(0, 0, 0, 0));
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const ordersRef = collection(db, 'orders');
-  
-  // Get all orders and filter in memory for accurate stats
-  const q = query(ordersRef, orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(q);
-  const allOrders = snapshot.docs
-    .map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }))
-    .filter(order => order.paymentStatus === 'success') as Order[];
-
-  const filterOrdersByDate = (orders: Order[], startDate: Date) => {
-    return orders.filter(order => {
-      const orderDate = order.createdAt.toDate();
-      return orderDate >= startDate;
-    });
-  };
-
-  const dailyOrders = filterOrdersByDate(allOrders, startOfDay);
-  const weeklyOrders = filterOrdersByDate(allOrders, startOfWeek);
-  const monthlyOrders = filterOrdersByDate(allOrders, startOfMonth);
-
-  const calculateStats = (orders: Order[]) => {
-    // Group orders by date for the chart
-    const ordersByDate = orders.reduce((acc, order) => {
-      const date = order.createdAt.toDate().toISOString().split('T')[0];
-      if (!acc[date]) {
-        acc[date] = {
-          total: 0,
-          amount: 0
-        };
-      }
-      acc[date].total += 1;
-      acc[date].amount += order.totalAmount;
-      return acc;
-    }, {} as Record<string, { total: number; amount: number }>);
-
-    // Convert to array format for the chart
-    const chartData = Object.entries(ordersByDate).map(([date, data]) => ({
-      date: new Date(date),
-      amount: data.amount,
-      total: data.total
-    }));
-
-    return {
-      total: orders.length,
-      completed: orders.filter(order => order.status === 'completed').length,
-      revenue: orders.reduce((sum, order) => sum + order.totalAmount, 0),
-      orders: chartData.sort((a, b) => a.date.getTime() - b.date.getTime())
-    };
-  };
-
-  return {
-    daily: calculateStats(dailyOrders),
-    weekly: calculateStats(weeklyOrders),
-    monthly: calculateStats(monthlyOrders)
-  };
-};
-
-export const getUserOrders = async (userId: string): Promise<Order[]> => {
-  const ordersRef = collection(db, 'orders');
-  const q = query(
-    ordersRef,
-    where('userId', '==', userId),
-    orderBy('createdAt', 'desc')
-  );
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  })) as Order[];
+// Delete order
+export const deleteOrder = async (orderId: string): Promise<void> => {
+    try {
+        await api.delete(`/${orderId}`);
+    } catch (error) {
+        if (error instanceof AxiosError) {
+            throw error.response?.data || error.message;
+        }
+        throw new Error('An unexpected error occurred');
+    }
 };

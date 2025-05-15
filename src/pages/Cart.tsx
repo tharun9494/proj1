@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Trash2, Plus, Minus, ArrowRight, Loader, MapPin, CreditCard, Truck } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { createOrder } from '../services/orderService';
+import { createOrder, placeOrder } from '../services/orderService';
 import { getUserData } from '../services/userService';
 import toast from 'react-hot-toast';
 import { RAZORPAY_CONFIG } from '../config/razorpay';
@@ -243,16 +243,6 @@ const Cart = () => {
       return;
     }
 
-    if (!restaurantStatus?.isOpen) {
-      toast.error('Restaurant is currently closed. Please try again during business hours (11:00 AM - 10:00 PM)');
-      return;
-    }
-
-    if (!address.street || !address.city || !address.pincode) {
-      toast.error('Please provide a complete delivery address');
-      return;
-    }
-
     if (items.length === 0) {
       toast.error('Your cart is empty');
       return;
@@ -261,42 +251,32 @@ const Cart = () => {
     try {
       setIsProcessing(true);
 
-      // Fetch complete user data to get both phone numbers
-      const userData = await getUserData(user.id);
+      // Prepare order data as your backend expects
+      const orderData = {
+        customerName: user.name,
+        phone: address.phone,
+        amount: finalAmount,
+        items: items.map(item => ({
+          name: item.name,
+          quantity: item.quantity
+        })),
+        address: `${address.street}, ${address.city}, ${address.pincode}, ${address.landmark}`
+      };
 
-      // Create order first
-      const orderRef = await addDoc(collection(db, 'orders'), {
-        userId: user.id,
-        items: items,
-        subtotal: subtotal,
-        gstAmount: totalGST,
-        gstPercentage: TOTAL_GST_PERCENTAGE,
-        deliveryFee: deliveryFee,
-        finalAmount: finalAmount,
-        address: address,
-        status: paymentMethod === 'COD' ? 'confirmed' : 'pending',
-        paymentStatus: paymentMethod === 'COD' ? 'pending' : 'pending',
-        paymentMethod: paymentMethod,
-        createdAt: serverTimestamp(),
-        userName: user.name,
-        userEmail: user.email || '',
-        userPhone: userData?.phone || user.phone || '',
-        alternativePhone: userData?.alternativePhone || '',
-        orderId: `ORDER_${Date.now()}_${user.id}`
-      });
+      // Call backend API
+      const result = await placeOrder(orderData);
 
-      if (paymentMethod === 'COD') {
-        // For COD, directly process the order without payment
-        await clearCart();
+      if (result.success) {
         toast.success('Order placed successfully!');
-        navigate('/'); // Redirect to home page
+        clearCart();
+        navigate('/'); // or wherever you want
       } else {
-        // For online payment, proceed with Razorpay
-        await handlePayment(finalAmount, orderRef.id);
+        toast.error('Order failed!');
       }
     } catch (error) {
-      console.error('Checkout error:', error);
-      toast.error('Checkout failed. Please try again.');
+      toast.error('Order failed!');
+      console.error(error);
+    } finally {
       setIsProcessing(false);
     }
   };
