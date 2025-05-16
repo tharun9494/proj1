@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 
 // Use environment variable for API URL, fallback to default
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/orders';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.16.117.93:5001/api/orders';
 
 // Create axios instance with default config
 const api = axios.create({

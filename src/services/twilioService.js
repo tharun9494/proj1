@@ -8,7 +8,7 @@ const client = twilio(
     process.env.TWILIO_AUTH_TOKEN
 );
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_BASE_URL = 'http://172.16.117.93:5001/api';
 
 /**
  * Trigger a call to admin when an order is placed
