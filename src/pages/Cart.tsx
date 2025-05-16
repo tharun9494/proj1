@@ -43,7 +43,7 @@ const GST_RATES = {
   SGST: 2.50
 };
 
-const DISCOUNT_PERCENTAGE = 5;
+const DISCOUNT_PERCENTAGE = 5;  
 
 const TOTAL_GST_PERCENTAGE = 5; // Total GST percentage (2.5% CGST + 2.5% SGST)
 

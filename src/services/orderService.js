@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://172.16.117.93:5001/api/orders';
+const API_BASE_URL = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:5002/api/orders'
+  : 'http://172.16.117.93:5002/api/orders';
 
 // Create a new order
 export const placeOrder = async (orderData) => {
