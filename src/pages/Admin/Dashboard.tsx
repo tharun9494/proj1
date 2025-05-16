@@ -450,20 +450,34 @@ const Dashboard = () => {
             return sum + (price * quantity);
           }, 0);
 
-          console.log('Order calculation:', {
-            id: doc.id,
-            items: items,
-            calculatedTotal: totalAmount
-          });
-
-          return {
+          // Ensure customer details are properly structured
+          const orderData = {
             id: doc.id,
             ...data,
             createdAt: data.createdAt || serverTimestamp(),
             totalAmount: totalAmount,
             status: data.status || 'pending',
-            items: items
+            items: items,
+            userName: data.customerName || data.userName || 'Guest',
+            userPhone: data.phone || data.userPhone || '',
+            alternativePhone: data.alternativePhone || data.customerAlternativePhone || '',
+            address: typeof data.address === 'string'
+              ? {
+                  street: data.address,
+                  city: '',
+                  pincode: '',
+                  landmark: ''
+                }
+              : {
+                  street: data.address?.street || '',
+                  city: data.address?.city || '',
+                  pincode: data.address?.pincode || '',
+                  landmark: data.address?.landmark || ''
+                }
           };
+
+          console.log('Processed order data:', orderData);
+          return orderData;
         }) as Order[];
 
         console.log('Processing orders:', allOrders.length);

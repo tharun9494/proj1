@@ -211,8 +211,8 @@ const Orders = () => {
 
               <div className="p-4">
                 <div className="space-y-3">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between">
+                  {order.items.map((item, index) => (
+                    <div key={`${order.id}-${item.id}-${index}`} className="flex items-center justify-between">
                       <div className="flex items-center">
                         <img
                           src={item.image}
