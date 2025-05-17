@@ -48,15 +48,45 @@ export interface Order {
 }
 
 // Create a new order
-export const placeOrder = async (orderData: Partial<Order>): Promise<Order> => {
+export const placeOrder = async (orderData: Partial<Order>): Promise<{ success: boolean; message?: string; data?: any }> => {
     try {
         const response = await api.post('/place', orderData);
-        return response.data;
+        return {
+            success: true,
+            data: response.data
+        };
     } catch (error) {
+        console.error('Order placement error:', error);
+        
         if (error instanceof AxiosError) {
-            throw error.response?.data || error.message;
+            // Handle specific error cases
+            if (error.code === 'ECONNREFUSED') {
+                return {
+                    success: false,
+                    message: 'Unable to connect to the server. Please check if the backend server is running.'
+                };
+            }
+            
+            if (error.response) {
+                // The request was made and the server responded with a status code
+                // that falls out of the range of 2xx
+                return {
+                    success: false,
+                    message: error.response.data?.message || `Server error: ${error.response.status}`
+                };
+            } else if (error.request) {
+                // The request was made but no response was received
+                return {
+                    success: false,
+                    message: 'No response from server. Please check your internet connection.'
+                };
+            }
         }
-        throw new Error('An unexpected error occurred');
+        
+        return {
+            success: false,
+            message: 'An unexpected error occurred while placing the order.'
+        };
     }
 };
 

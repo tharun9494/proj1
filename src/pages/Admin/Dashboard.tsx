@@ -41,7 +41,6 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { getOrderStats } from '../../services/orderService';
 import { 
   LineChart, 
   Line, 
@@ -95,6 +94,8 @@ interface Order {
   };
   paymentStatus: 'success' | 'pending' | 'failed';
   paymentMethod: 'ONLINE' | 'COD';
+  updatedAt?: any;
+  completedAt?: any;
 }
 
 interface Message {
@@ -213,6 +214,7 @@ const Dashboard = () => {
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [isAutomaticStatus, setIsAutomaticStatus] = useState(true);
 
   const ITEMS_PER_PAGE = 5;
   const ITEMS_PER_CATEGORY = 5;
@@ -485,7 +487,7 @@ const Dashboard = () => {
         // Update total orders count
         setTotalOrders(allOrders.length);
 
-        // Filter today's orders
+        // Filter today's orders (created after midnight)
         const todayOrdersList = allOrders.filter(order => {
           if (!order.createdAt) return false;
           const orderDate = order.createdAt.toDate();
@@ -493,9 +495,12 @@ const Dashboard = () => {
         });
 
         // Filter completed orders
-        const completedOrdersList = allOrders.filter(order => 
-          order.status === 'completed'
-        );
+        const completedOrdersList = allOrders.filter(order => {
+          if (order.status !== 'completed') return false;
+          // Use updatedAt or completedAt if available, fallback to createdAt
+          const completedDate = order.updatedAt?.toDate?.() || order.completedAt?.toDate?.() || order.createdAt?.toDate?.();
+          return completedDate && completedDate >= today;
+        });
 
         // Filter past orders
         const pastOrdersList = allOrders.filter(order => {
@@ -656,11 +661,26 @@ const Dashboard = () => {
   const handleToggleRestaurantStatus = async () => {
     try {
       const restaurantRef = doc(db, 'restaurant', 'status');
-      await updateDoc(restaurantRef, {
-        isOpen: !restaurantStatus
-      });
-      setRestaurantStatus(!restaurantStatus);
-      toast.success(`Restaurant is now ${!restaurantStatus ? 'open' : 'closed'}`);
+      if (isAutomaticStatus) {
+        // If in automatic mode, switch to manual mode
+        setIsAutomaticStatus(false);
+        await updateDoc(restaurantRef, {
+          isOpen: !restaurantStatus,
+          lastUpdated: serverTimestamp(),
+          isAutomatic: false
+        });
+        setRestaurantStatus(!restaurantStatus);
+        toast.success(`Restaurant is now ${!restaurantStatus ? 'open' : 'closed'} (Manual Mode)`);
+      } else {
+        // If in manual mode, switch to automatic mode
+        setIsAutomaticStatus(true);
+        await updateDoc(restaurantRef, {
+          isAutomatic: true,
+          lastUpdated: serverTimestamp()
+        });
+        checkAndUpdateRestaurantStatus();
+        toast.success('Restaurant status is now automatic');
+      }
     } catch (error) {
       console.error('Error toggling restaurant status:', error);
       toast.error('Failed to update restaurant status');
@@ -1486,6 +1506,86 @@ const Dashboard = () => {
     };
   }, [isAdmin, orders.today, orders.completed, orders.past, isSoundEnabled]);
 
+  // Function to check and update restaurant status based on time
+  const checkAndUpdateRestaurantStatus = useCallback(async () => {
+    if (!isAutomaticStatus) return;
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinutes = now.getMinutes();
+    const currentTime = currentHour * 60 + currentMinutes;
+
+    const openTime = 11 * 60; // 11:00 AM
+    const closeTime = 22 * 60; // 10:00 PM
+
+    const shouldBeOpen = currentTime >= openTime && currentTime < closeTime;
+
+    if (shouldBeOpen !== restaurantStatus) {
+      try {
+        const restaurantRef = doc(db, 'restaurant', 'status');
+        await updateDoc(restaurantRef, {
+          isOpen: shouldBeOpen,
+          lastUpdated: serverTimestamp()
+        });
+        setRestaurantStatus(shouldBeOpen);
+        toast.success(`Restaurant is now ${shouldBeOpen ? 'open' : 'closed'}`);
+      } catch (error) {
+        console.error('Error updating restaurant status:', error);
+      }
+    }
+  }, [isAutomaticStatus, restaurantStatus]);
+
+  // Set up interval for checking restaurant status
+  useEffect(() => {
+    // Initial check
+    checkAndUpdateRestaurantStatus();
+
+    // Set up interval to check every minute
+    const intervalId = setInterval(checkAndUpdateRestaurantStatus, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [checkAndUpdateRestaurantStatus]);
+
+  // Function to reset orders at midnight
+  const resetOrdersAtMidnight = useCallback(() => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+
+    // Set timeout to reset orders at midnight
+    const timeoutId = setTimeout(async () => {
+      try {
+        // Move all today's orders to completed
+        const batch = writeBatch(db);
+        orders.today.forEach(order => {
+          const orderRef = doc(db, 'orders', order.id);
+          batch.update(orderRef, { status: 'completed' });
+        });
+
+        await batch.commit();
+        
+        // Schedule next reset
+        resetOrdersAtMidnight();
+      } catch (error) {
+        console.error('Error resetting orders:', error);
+      }
+    }, timeUntilMidnight);
+
+    // Return cleanup function
+    return () => clearTimeout(timeoutId);
+  }, [orders.today]);
+
+  // Fix the useEffect cleanup
+  useEffect(() => {
+    const cleanup = resetOrdersAtMidnight();
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [resetOrdersAtMidnight]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -1527,19 +1627,23 @@ const Dashboard = () => {
                   onClick={handleToggleRestaurantStatus}
                   className={`w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm sm:text-base font-medium flex items-center justify-center gap-2 ${
                     restaurantStatus
-                    ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-red-500 text-white hover:bg-red-600'
+                      ? 'bg-green-500 text-white hover:bg-green-600'
+                      : 'bg-red-500 text-white hover:bg-red-600'
                   }`}
                 >
-                  {restaurantStatus ? (
+                  {isAutomaticStatus ? (
                     <>
-                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                      Restaurant is Open
+                      <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
+                      {restaurantStatus ? 'Open (Auto)' : 'Closed (Auto)'}
                     </>
                   ) : (
                     <>
-                      <XCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                      Restaurant is Closed
+                      {restaurantStatus ? (
+                        <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+                      ) : (
+                        <XCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+                      )}
+                      {restaurantStatus ? 'Open (Manual)' : 'Closed (Manual)'}
                     </>
                   )}
                 </button>
