@@ -169,11 +169,25 @@ const Cart = () => {
 
   const loadRazorpayScript = () => {
     return new Promise((resolve, reject) => {
+      // Check if script is already loaded
+      if (window.Razorpay) {
+        resolve(window.Razorpay);
+        return;
+      }
+
       const script = document.createElement('script');
       script.src = 'https://checkout.razorpay.com/v1/checkout.js';
       script.async = true;
-      script.onload = resolve;
-      script.onerror = reject;
+      script.onload = () => {
+        if (window.Razorpay) {
+          resolve(window.Razorpay);
+        } else {
+          reject(new Error('Razorpay failed to load'));
+        }
+      };
+      script.onerror = () => {
+        reject(new Error('Failed to load Razorpay script'));
+      };
       document.body.appendChild(script);
     });
   };
@@ -181,12 +195,23 @@ const Cart = () => {
   let checkoutInProgress = false;
 
   const handleCheckout = async () => {
-    if (checkoutInProgress) return;
+    if (checkoutInProgress) {
+      console.log('Checkout already in progress');
+      return;
+    }
     checkoutInProgress = true;
+
     try {
-      console.log("handleCheckout called");
+      setIsProcessing(true);
+
+      // Validate cart and user data
       if (!user) {
-        toast.error('Please login to continue');
+        toast.error('Please login to place an order');
+        return;
+      }
+
+      if (!address) {
+        toast.error('Please add a delivery address');
         return;
       }
 
@@ -195,209 +220,152 @@ const Cart = () => {
         return;
       }
 
-      // Validate required fields
-      if (!address.phone || address.phone.length !== 10) {
-        toast.error('Please enter a valid 10-digit phone number');
+      // Check if restaurant is open
+      const restaurantRef = doc(db, 'restaurant', 'status');
+      const restaurantDoc = await getDoc(restaurantRef);
+      const restaurantStatus = restaurantDoc.data()?.isOpen;
+
+      if (!restaurantStatus) {
+        toast.error('Restaurant is currently closed');
         return;
       }
 
-      if (!address.street || !address.city || !address.pincode) {
-        toast.error('Please fill in all required address fields');
-        return;
+      // Calculate final amount
+      const itemTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const deliveryCharges = itemTotal < 500 ? 40 : 0;
+      const finalAmount = itemTotal + deliveryCharges;
+
+      // Prepare order data
+      const apiOrderData = {
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image
+        })),
+        amount: itemTotal,
+        deliveryCharges: deliveryCharges,
+        finalAmount: finalAmount,
+        paymentMethod: paymentMethod,
+        address: {
+          street: address.street,
+          city: address.city,
+          pincode: address.pincode,
+          landmark: address.landmark
+        },
+        customerName: user.name,
+        customerEmail: user.email,
+        phone: address.phone,
+        alternativePhone: address.alternativePhone
+      };
+
+      // Check for existing pending orders
+      const ordersRef = collection(db, 'orders');
+      const q = query(
+        ordersRef,
+        where('userId', '==', user.id),
+        where('status', 'in', ['pending', 'processing']),
+        where('createdAt', '>=', new Date(Date.now() - 2 * 60 * 1000)) // Last 2 minutes
+      );
+      
+      const existingOrders = await getDocs(q);
+      
+      if (!existingOrders.empty) {
+        const existingOrder = existingOrders.docs[0].data();
+        const orderTime = existingOrder.createdAt?.toDate?.() || new Date();
+        const timeDiff = Date.now() - orderTime.getTime();
+        
+        if (timeDiff <= 2 * 60 * 1000) {
+          toast.error('You have a recent pending order. Please wait 2 minutes before placing another order.');
+          return;
+        }
       }
 
-      try {
-        setIsProcessing(true);
-
-        // Create customer details object with standardized phone numbers
-        const customerDetails = {
-          customerName: user.name || 'Guest',
-          phone: address.phone,
-          alternativePhone: address.alternativePhone || '',
-          address: `${address.street}, ${address.city}, ${address.pincode}${address.landmark ? `, ${address.landmark}` : ''}`
-        };
-
-        // Format order data for API
-        const apiOrderData = {
-          ...customerDetails,
-          amount: finalAmount,
-          items: items.map(item => ({
-            id: item.id,
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price
-          })),
-          paymentMethod: paymentMethod,
-          deliveryFee: deliveryFee,
-          gst: {
-            CGST: gstAmounts.CGST,
-            SGST: gstAmounts.SGST
-          },
-          discount: discountAmount
-        };
-
-        // Check for existing pending orders for this user
-        const ordersRef = collection(db, 'orders');
-        const q = query(
-          ordersRef,
-          where('userId', '==', user.id),
-          where('status', 'in', ['pending', 'processing']),
-          where('createdAt', '>=', new Date(Date.now() - 2 * 60 * 1000)) // Last 2 minutes
-        );
-        
-        const existingOrders = await getDocs(q);
-        
-        if (!existingOrders.empty) {
-          const existingOrder = existingOrders.docs[0].data();
-          const orderTime = existingOrder.createdAt?.toDate?.() || new Date();
-          const timeDiff = Date.now() - orderTime.getTime();
+      if (paymentMethod === 'COD') {
+        try {
+          // Call admin API first
+          const adminResponse = await placeOrder(apiOrderData);
           
-          // If the existing order is more than 2 minutes old, allow new order
-          if (timeDiff > 2 * 60 * 1000) {
-            console.log('Old pending order found, proceeding with new order');
-          } else {
-            console.log('Recent pending order found, preventing duplicate');
-            toast.error('You have a recent pending order. Please wait 2 minutes before placing another order.');
-            return;
-          }
-        }
+          if (adminResponse.success) {
+            // Only create order in Firebase after successful admin API response
+            const orderDocRef = doc(collection(db, 'orders'));
+            const orderId = orderDocRef.id;
 
-        // Create a new order document reference
-        const orderDocRef = doc(collection(db, 'orders'));
-        const orderId = orderDocRef.id;
-
-        // Prepare the order data
-        const firestoreOrderData = {
-          ...apiOrderData,
-          orderId: orderId,
-          userId: user.id,
-          status: 'pending',
-          createdAt: serverTimestamp(),
-          paymentStatus: 'pending',
-          updatedAt: serverTimestamp(),
-          customerPhone: address.phone,
-          customerAlternativePhone: address.alternativePhone || ''
-        };
-
-        // Use a transaction to ensure atomicity
-        await runTransaction(db, async (transaction) => {
-          // Set the order document
-          transaction.set(orderDocRef, firestoreOrderData);
-
-          // Update orderCount for each item
-          for (const item of items) {
-            const itemRef = doc(db, 'menuItems', item.id);
-            transaction.update(itemRef, {
-              orderCount: increment(1)
-            });
-          }
-        });
-
-        if (paymentMethod === 'COD') {
-          try {
-            // Call admin API with the same data and orderId
-            const adminResponse = await placeOrder({
+            const firestoreOrderData = {
               ...apiOrderData,
-              orderId: orderId
+              orderId: orderId,
+              userId: user.id,
+              status: 'pending',
+              createdAt: serverTimestamp(),
+              paymentStatus: 'pending',
+              updatedAt: serverTimestamp(),
+              customerPhone: address.phone,
+              customerAlternativePhone: address.alternativePhone || ''
+            };
+
+            // Use a transaction to ensure atomicity
+            await runTransaction(db, async (transaction) => {
+              // Set the order document
+              transaction.set(orderDocRef, firestoreOrderData);
+
+              // Update orderCount for each item
+              for (const item of items) {
+                const itemRef = doc(db, 'menuItems', item.id);
+                transaction.update(itemRef, {
+                  orderCount: increment(1)
+                });
+              }
             });
-            
-            if (adminResponse.success) {
-              await clearCart();
-              toast.success('Order placed successfully!');
-              navigate('/orders');
-            } else {
-              // If admin API fails, update Firestore order status
-              await updateDoc(orderDocRef, {
-                status: 'failed',
-                paymentStatus: 'failed',
-                updatedAt: serverTimestamp()
-              });
-              toast.error(adminResponse.message || 'Failed to place order. Please try again.');
-            }
-          } catch (error) {
-            // If admin API call fails, update Firestore order status
-            await updateDoc(orderDocRef, {
-              status: 'failed',
-              paymentStatus: 'failed',
-              updatedAt: serverTimestamp()
-            });
-            throw error;
+
+            await clearCart();
+            toast.success('Order placed successfully!');
+            navigate('/orders');
+          } else {
+            toast.error(adminResponse.message || 'Failed to place order. Please try again.');
           }
-        } else {
-          // For online payment, proceed with payment
-          await handlePayment(finalAmount, orderId);
+        } catch (error) {
+          console.error('Error placing order:', error);
+          if (error instanceof Error) {
+            toast.error(error.message);
+          } else {
+            toast.error('Failed to place order. Please try again.');
+          }
         }
-      } catch (error) {
-        console.error('Error placing order:', error);
-        if (error instanceof Error) {
-          toast.error(error.message);
-        } else {
-          toast.error('Failed to place order. Please try again.');
-        }
-      } finally {
-        setIsProcessing(false);
+      } else {
+        // For online payment, proceed with payment
+        await handlePayment(finalAmount, apiOrderData);
+      }
+    } catch (error) {
+      console.error('Error in checkout:', error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error('Failed to process checkout. Please try again.');
       }
     } finally {
+      setIsProcessing(false);
       checkoutInProgress = false;
     }
   };
 
-  const handlePayment = async (amount: number, orderId: string) => {
+  const handlePayment = async (amount: number, orderData: any) => {
     try {
-      setIsProcessing(true);
-
-      // Load Razorpay SDK first
+      // Load Razorpay script first
       await loadRazorpayScript();
 
-      // Only proceed if Razorpay is loaded
-      if (!(window as any).Razorpay) {
-        throw new Error('Razorpay SDK failed to load');
+      if (!window.Razorpay) {
+        throw new Error('Razorpay not initialized');
       }
 
       const options = {
         key: RAZORPAY_CONFIG.key_id,
-        amount: Math.round(amount * 100),
-        currency: RAZORPAY_CONFIG.currency,
-        name: RAZORPAY_CONFIG.name,
-        description: `Order #${orderId}`,
-        prefill: {
-          name: user?.name || '',
-          email: user?.email || '',
-          contact: address.phone || ''
-        },
+        amount: amount * 100, // Razorpay expects amount in paise
+        currency: "INR",
+        name: "Pittas",
+        description: "Food Order Payment",
         handler: async function (response: any) {
           try {
-            // Get order data from Firestore if possible
-            let orderData;
-            try {
-              const orderRef = doc(db, 'orders', orderId);
-              const orderDoc = await getDoc(orderRef);
-              orderData = orderDoc.data();
-            } catch (firestoreError) {
-              console.error('Firestore error:', firestoreError);
-              // If Firestore fails, use the API data
-              orderData = {
-                customerName: user?.name || 'Guest',
-                phone: address.phone,
-                alternativePhone: address.alternativePhone || '',
-                address: `${address.street}, ${address.city}, ${address.pincode}${address.landmark ? `, ${address.landmark}` : ''}`,
-                amount: amount,
-                items: items.map(item => ({
-                  id: item.id,
-                  name: item.name,
-                  quantity: item.quantity,
-                  price: item.price
-                })),
-                paymentMethod: 'ONLINE',
-                deliveryFee: deliveryFee,
-                gst: {
-                  CGST: gstAmounts.CGST,
-                  SGST: gstAmounts.SGST
-                },
-                discount: discountAmount
-              };
-            }
-
             // Call admin API with payment details
             const adminResponse = await placeOrder({
               ...orderData,
@@ -406,19 +374,36 @@ const Cart = () => {
             });
 
             if (adminResponse.success) {
-              try {
-                // Try to update order status in Firestore
-                const orderRef = doc(db, 'orders', orderId);
-                await updateDoc(orderRef, {
-                  paymentId: response.razorpay_payment_id,
-                  paymentStatus: 'success',
-                  status: 'confirmed',
-                  updatedAt: serverTimestamp()
-                });
-              } catch (firestoreError) {
-                console.error('Firestore error:', firestoreError);
-                // Continue even if Firestore fails - the order is already updated with admin
-              }
+              // Only create order in Firebase after successful payment and admin API response
+              const orderDocRef = doc(collection(db, 'orders'));
+              const orderId = orderDocRef.id;
+
+              const firestoreOrderData = {
+                ...orderData,
+                orderId: orderId,
+                userId: user?.id,
+                status: 'confirmed',
+                createdAt: serverTimestamp(),
+                paymentStatus: 'success',
+                paymentId: response.razorpay_payment_id,
+                updatedAt: serverTimestamp(),
+                customerPhone: orderData.phone,
+                customerAlternativePhone: orderData.alternativePhone || ''
+              };
+
+              // Use a transaction to ensure atomicity
+              await runTransaction(db, async (transaction) => {
+                // Set the order document
+                transaction.set(orderDocRef, firestoreOrderData);
+
+                // Update orderCount for each item
+                for (const item of orderData.items) {
+                  const itemRef = doc(db, 'menuItems', item.id);
+                  transaction.update(itemRef, {
+                    orderCount: increment(1)
+                  });
+                }
+              });
 
               // Clear cart and redirect
               await clearCart();
@@ -432,34 +417,35 @@ const Cart = () => {
             toast.error('Payment successful but order update failed. Please contact support.');
           }
         },
-        modal: {
-          ondismiss: async function() {
-            try {
-              const orderRef = doc(db, 'orders', orderId);
-              await updateDoc(orderRef, {
-                paymentStatus: 'cancelled',
-                status: 'cancelled',
-                updatedAt: serverTimestamp()
-              });
-            } catch (firestoreError) {
-              console.error('Firestore error:', firestoreError);
-              // Continue even if Firestore fails
-            }
-            toast.error('Payment cancelled');
-            setIsProcessing(false);
-          }
+        prefill: {
+          name: user?.name,
+          email: user?.email,
+          contact: orderData.phone
         },
         theme: {
-          color: '#EF4444'
+          color: "#EF4444"
+        },
+        modal: {
+          ondismiss: function() {
+            toast.error('Payment cancelled');
+          }
         }
       };
 
-      const razorpayInstance = new (window as any).Razorpay(options);
-      razorpayInstance.open();
+      try {
+        const razorpay = new window.Razorpay(options);
+        razorpay.on('payment.failed', function (response: any) {
+          toast.error('Payment failed. Please try again.');
+          console.error('Payment failed:', response.error);
+        });
+        razorpay.open();
+      } catch (error) {
+        console.error('Razorpay initialization error:', error);
+        throw new Error('Failed to initialize payment gateway');
+      }
     } catch (error) {
       console.error('Payment initialization error:', error);
-      toast.error('Failed to initialize payment. Please try again.');
-      setIsProcessing(false);
+      toast.error(error instanceof Error ? error.message : 'Failed to initialize payment. Please try again.');
     }
   };
 

@@ -6,8 +6,6 @@ import { CartProvider } from './context/CartContext';
 import Navbar from './components/Navbar';
 import AppRoutes from './routes';
 import Footer from './components/Footer';
-import NotificationHandler from './components/NotificationHandler';
-import Dashboard from './pages/Admin/Dashboard';
 import OrderManagement from './components/OrderManagement';
 
 const App: React.FC = () => {
@@ -21,7 +19,6 @@ const App: React.FC = () => {
     <Router>
       <AuthProvider>
         <CartProvider>
-          <NotificationHandler onNewOrder={handleNewOrder} />
           <div className="min-h-screen flex flex-col bg-gray-50">
             <Navbar />
             <main className="flex-grow container mx-auto px-4 py-8">

@@ -53,12 +53,6 @@ import {
 } from 'recharts';
 import toast from 'react-hot-toast';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subDays, subWeeks, subMonths } from 'date-fns';
-import {
-  requestNotificationPermission,
-  onMessageListener,
-  showNotification,
-  saveFCMToken
-} from '../../services/notificationService';
 import { auth } from '../../config/firebase';
 
 interface MenuItem {
@@ -182,7 +176,6 @@ const Dashboard = () => {
   const [restaurantStatus, setRestaurantStatus] = useState<boolean>(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryAvailability, setCategoryAvailability] = useState<Record<string, boolean>>({});
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const previousOrdersCountRef = useRef(0);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [isAddingOffer, setIsAddingOffer] = useState(false);
@@ -200,11 +193,6 @@ const Dashboard = () => {
     menuItemName: '',
     originalPrice: 0
   });
-  const [newOrderNotification, setNewOrderNotification] = useState<{
-    show: boolean;
-    order: Order | null;
-  }>({ show: false, order: null });
-  const [isSoundEnabled, setIsSoundEnabled] = useState(false);
   const [revenueStats, setRevenueStats] = useState<RevenueStats>({
     daily: { amount: 0, change: 0 },
     weekly: { amount: 0, change: 0 },
@@ -337,51 +325,14 @@ const Dashboard = () => {
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Initialize audio immediately when component mounts
-    audioRef.current = new Audio('/notification.mp3');
-    audioRef.current.load(); // Preload the audio file
-
     // Request notification permission when admin dashboard loads
     if (Notification.permission !== 'granted') {
       Notification.requestPermission();
     }
-    
-    return () => {
-      // Cleanup function
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
   }, [isAdmin]);
 
-  // Handle user interaction to enable sound
   useEffect(() => {
-    const handleUserInteraction = () => {
-      setIsSoundEnabled(true);
-      // Try to play a silent sound to ensure audio context is initialized
-      if (audioRef.current) {
-        audioRef.current.volume = 0;
-        audioRef.current.play().catch(() => {});
-        audioRef.current.volume = 1;
-      }
-      // Remove the event listeners after first interaction
-      document.removeEventListener('click', handleUserInteraction);
-      document.removeEventListener('keydown', handleUserInteraction);
-    };
-
-    // Add event listeners for user interaction
-    document.addEventListener('click', handleUserInteraction);
-    document.addEventListener('keydown', handleUserInteraction);
-
-    return () => {
-      document.removeEventListener('click', handleUserInteraction);
-      document.removeEventListener('keydown', handleUserInteraction);
-    };
-  }, []);
-
-  useEffect(() => {
-    // Update orders listener to play sound only after user interaction
+    // Update orders listener
     if (orders.today.length > previousOrdersCountRef.current) {
       // Show toast notification
       toast.success('New order received!', {
@@ -1462,88 +1413,40 @@ const Dashboard = () => {
     );
   };
 
-  // Initialize FCM
-  useEffect(() => {
-    const initializeFCM = async () => {
-      try {
-        const token = await requestNotificationPermission();
-        if (token && isAdmin) {
-          await saveFCMToken(auth.currentUser?.uid || '', token);
-        }
-      } catch (error) {
-        console.error('Error initializing FCM:', error);
-      }
-    };
-
-    if (isAdmin) {
-      initializeFCM();
-    }
-  }, [isAdmin]);
-
-  // Listen for foreground messages
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    const messageListener = onMessageListener();
-    messageListener.then((payload) => {
-      showNotification(payload);
-      // Play notification sound if enabled
-      if (isSoundEnabled && audioRef.current) {
-        audioRef.current.play().catch(console.error);
-      }
-      // Show in-app notification
-      if (payload.data?.orderId) {
-        const order = [...orders.today, ...orders.completed, ...orders.past]
-          .find(o => o.id === payload.data?.orderId);
-        if (order) {
-          setNewOrderNotification({ show: true, order });
-        }
-      }
-    }).catch((err) => console.error('Error receiving message:', err));
-
-    return () => {
-      // Cleanup if needed
-    };
-  }, [isAdmin, orders.today, orders.completed, orders.past, isSoundEnabled]);
-
   // Function to check and update restaurant status based on time
-  const checkAndUpdateRestaurantStatus = useCallback(async () => {
-    if (!isAutomaticStatus) return;
-
+  const checkAndUpdateRestaurantStatus = useCallback(() => {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinutes = now.getMinutes();
-    const currentTime = currentHour * 60 + currentMinutes;
+    const currentTime = currentHour + (currentMinutes / 60);
 
-    const openTime = 11 * 60; // 11:00 AM
-    const closeTime = 22 * 60; // 10:00 PM
+    // Restaurant is open from 11:00 AM to 10:00 PM
+    const isOpen = currentTime >= 11 && currentTime < 22;
 
-    const shouldBeOpen = currentTime >= openTime && currentTime < closeTime;
-
-    if (shouldBeOpen !== restaurantStatus) {
-      try {
-        const restaurantRef = doc(db, 'restaurant', 'status');
-        await updateDoc(restaurantRef, {
-          isOpen: shouldBeOpen,
-          lastUpdated: serverTimestamp()
-        });
-        setRestaurantStatus(shouldBeOpen);
-        toast.success(`Restaurant is now ${shouldBeOpen ? 'open' : 'closed'}`);
-      } catch (error) {
+    if (isAutomaticStatus && restaurantStatus !== isOpen) {
+      const restaurantRef = doc(db, 'restaurant', 'status');
+      updateDoc(restaurantRef, {
+        isOpen: isOpen,
+        lastUpdated: serverTimestamp(),
+        isAutomatic: true
+      }).then(() => {
+        setRestaurantStatus(isOpen);
+        toast.success(`Restaurant is now ${isOpen ? 'open' : 'closed'} (Automatic)`);
+      }).catch((error) => {
         console.error('Error updating restaurant status:', error);
-      }
+        toast.error('Failed to update restaurant status');
+      });
     }
-  }, [isAutomaticStatus, restaurantStatus]);
+  }, [restaurantStatus, isAutomaticStatus]);
 
   // Set up interval for checking restaurant status
   useEffect(() => {
-    // Initial check
+    // Check immediately when component mounts
     checkAndUpdateRestaurantStatus();
-
-    // Set up interval to check every minute
-    const intervalId = setInterval(checkAndUpdateRestaurantStatus, 60000);
-
-    return () => clearInterval(intervalId);
+    
+    // Then check every minute
+    const interval = setInterval(checkAndUpdateRestaurantStatus, 60000);
+    return () => clearInterval(interval);
   }, [checkAndUpdateRestaurantStatus]);
 
   // Function to reset orders at midnight
@@ -2067,42 +1970,6 @@ const Dashboard = () => {
                   ))}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* New Order Notification */}
-          {newOrderNotification.show && newOrderNotification.order && (
-            <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg border border-red-200 animate-bounce">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-red-600">New Order Received!</h3>
-                  <p className="text-sm text-gray-600">
-                    Order ID: {newOrderNotification.order.id}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Amount: ₹{newOrderNotification.order.totalAmount}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Payment: {newOrderNotification.order.paymentMethod}
-                  </p>
-                </div>
-                <div className="flex flex-col items-center ml-4">
-                  <a
-                    href={`tel:${newOrderNotification.order.userPhone}`}
-                    className="bg-green-500 text-white p-2 rounded-full hover:bg-green-600"
-                    title="Call Customer"
-                  >
-                    <Phone size={20} />
-                  </a>
-                  <span className="text-xs text-gray-500 mt-1">Call</span>
-                </div>
-              </div>
-              <button
-                onClick={() => setNewOrderNotification({ show: false, order: null })}
-                className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
-              >
-                ×
-              </button>
             </div>
           )}
         </div>
