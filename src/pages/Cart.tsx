@@ -8,7 +8,7 @@ import { placeOrder } from '../services/orderService';
 import { getUserData } from '../services/userService';
 import toast from 'react-hot-toast';
 import { RAZORPAY_CONFIG } from '../config/razorpay';
-import { collection, addDoc, serverTimestamp, writeBatch, increment, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, increment, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { doc, updateDoc, onSnapshot, getDoc } from 'firebase/firestore';
 
@@ -63,7 +63,7 @@ const calculateGST = (amount: number) => {
   };
 };
 
-// Calculate discount amount
+// Calculate discount amount  x
 const calculateDiscount = (amount: number) => {
   return Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
 };
@@ -178,194 +178,167 @@ const Cart = () => {
     });
   };
 
+  let checkoutInProgress = false;
+
   const handleCheckout = async () => {
-    if (!user) {
-      toast.error('Please login to continue');
-      return;
-    }
-
-    if (items.length === 0) {
-      toast.error('Your cart is empty');
-      return;
-    }
-
-    // Validate required fields
-    if (!address.phone || address.phone.length !== 10) {
-      toast.error('Please enter a valid 10-digit phone number');
-      return;
-    }
-
-    if (!address.street || !address.city || !address.pincode) {
-      toast.error('Please fill in all required address fields');
-      return;
-    }
-
+    if (checkoutInProgress) return;
+    checkoutInProgress = true;
     try {
-      setIsProcessing(true);
+      console.log("handleCheckout called");
+      if (!user) {
+        toast.error('Please login to continue');
+        return;
+      }
 
-      // Create customer details object
-      const customerDetails = {
-        customerName: user.name || 'Guest',
-        phone: address.phone,
-        alternativePhone: address.alternativePhone || '',
-        address: `${address.street}, ${address.city}, ${address.pincode}${address.landmark ? `, ${address.landmark}` : ''}`
-      };
+      if (items.length === 0) {
+        toast.error('Your cart is empty');
+        return;
+      }
 
-      // Format order data for API
-      const apiOrderData = {
-        ...customerDetails,
-        amount: finalAmount,
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price
-        })),
-        paymentMethod: paymentMethod,
-        deliveryFee: deliveryFee,
-        gst: {
-          CGST: gstAmounts.CGST,
-          SGST: gstAmounts.SGST
-        },
-        discount: discountAmount
-      };
+      // Validate required fields
+      if (!address.phone || address.phone.length !== 10) {
+        toast.error('Please enter a valid 10-digit phone number');
+        return;
+      }
 
-      if (paymentMethod === 'COD') {
-        // For COD, call admin API first
-        const adminResponse = await placeOrder(apiOrderData);
+      if (!address.street || !address.city || !address.pincode) {
+        toast.error('Please fill in all required address fields');
+        return;
+      }
+
+      try {
+        setIsProcessing(true);
+
+        // Create customer details object with standardized phone numbers
+        const customerDetails = {
+          customerName: user.name || 'Guest',
+          phone: address.phone,
+          alternativePhone: address.alternativePhone || '',
+          address: `${address.street}, ${address.city}, ${address.pincode}${address.landmark ? `, ${address.landmark}` : ''}`
+        };
+
+        // Format order data for API
+        const apiOrderData = {
+          ...customerDetails,
+          amount: finalAmount,
+          items: items.map(item => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          paymentMethod: paymentMethod,
+          deliveryFee: deliveryFee,
+          gst: {
+            CGST: gstAmounts.CGST,
+            SGST: gstAmounts.SGST
+          },
+          discount: discountAmount
+        };
+
+        // Check for existing pending orders for this user
+        const ordersRef = collection(db, 'orders');
+        const q = query(
+          ordersRef,
+          where('userId', '==', user.id),
+          where('status', 'in', ['pending', 'processing']),
+          where('createdAt', '>=', new Date(Date.now() - 2 * 60 * 1000)) // Last 2 minutes
+        );
         
-        if (adminResponse.success) {
+        const existingOrders = await getDocs(q);
+        
+        if (!existingOrders.empty) {
+          const existingOrder = existingOrders.docs[0].data();
+          const orderTime = existingOrder.createdAt?.toDate?.() || new Date();
+          const timeDiff = Date.now() - orderTime.getTime();
+          
+          // If the existing order is more than 2 minutes old, allow new order
+          if (timeDiff > 2 * 60 * 1000) {
+            console.log('Old pending order found, proceeding with new order');
+          } else {
+            console.log('Recent pending order found, preventing duplicate');
+            toast.error('You have a recent pending order. Please wait 2 minutes before placing another order.');
+            return;
+          }
+        }
+
+        // Create a new order document reference
+        const orderDocRef = doc(collection(db, 'orders'));
+        const orderId = orderDocRef.id;
+
+        // Prepare the order data
+        const firestoreOrderData = {
+          ...apiOrderData,
+          orderId: orderId,
+          userId: user.id,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+          paymentStatus: 'pending',
+          updatedAt: serverTimestamp(),
+          customerPhone: address.phone,
+          customerAlternativePhone: address.alternativePhone || ''
+        };
+
+        // Use a transaction to ensure atomicity
+        await runTransaction(db, async (transaction) => {
+          // Set the order document
+          transaction.set(orderDocRef, firestoreOrderData);
+
+          // Update orderCount for each item
+          for (const item of items) {
+            const itemRef = doc(db, 'menuItems', item.id);
+            transaction.update(itemRef, {
+              orderCount: increment(1)
+            });
+          }
+        });
+
+        if (paymentMethod === 'COD') {
           try {
-            // Check for existing pending orders for this user
-            const ordersRef = collection(db, 'orders');
-            const q = query(
-              ordersRef,
-              where('userId', '==', user.id),
-              where('status', '==', 'pending'),
-              where('createdAt', '>=', new Date(Date.now() - 5 * 60 * 1000)) // Last 5 minutes
-            );
+            // Call admin API with the same data and orderId
+            const adminResponse = await placeOrder({
+              ...apiOrderData,
+              orderId: orderId
+            });
             
-            const existingOrders = await getDocs(q);
-            
-            if (!existingOrders.empty) {
-              console.log('Duplicate order detected, skipping Firestore write');
+            if (adminResponse.success) {
               await clearCart();
               toast.success('Order placed successfully!');
               navigate('/orders');
-              return;
-            }
-
-            // If no duplicate found, create new order
-            const orderRef = collection(db, 'orders');
-            const batch = writeBatch(db);
-
-            const firestoreOrderData = {
-              ...apiOrderData,
-              userId: user.id,
-              status: 'pending',
-              createdAt: serverTimestamp(),
-              paymentStatus: 'pending',
-              updatedAt: serverTimestamp(),
-              // Explicitly include both phone numbers
-              customerPhone: address.phone,
-              customerAlternativePhone: address.alternativePhone || ''
-            };
-
-            const orderDocRef = doc(orderRef);
-            batch.set(orderDocRef, firestoreOrderData);
-
-            // Update orderCount for each item
-            items.forEach(item => {
-              const itemRef = doc(db, 'menuItems', item.id);
-              batch.update(itemRef, {
-                orderCount: increment(1)
+            } else {
+              // If admin API fails, update Firestore order status
+              await updateDoc(orderDocRef, {
+                status: 'failed',
+                paymentStatus: 'failed',
+                updatedAt: serverTimestamp()
               });
+              toast.error(adminResponse.message || 'Failed to place order. Please try again.');
+            }
+          } catch (error) {
+            // If admin API call fails, update Firestore order status
+            await updateDoc(orderDocRef, {
+              status: 'failed',
+              paymentStatus: 'failed',
+              updatedAt: serverTimestamp()
             });
-
-            await batch.commit();
-            await clearCart();
-            toast.success('Order placed successfully!');
-            navigate('/orders');
-          } catch (firestoreError) {
-            console.error('Firestore error:', firestoreError);
-            // Continue even if Firestore fails - the order is already placed with admin
-            await clearCart();
-            toast.success('Order placed successfully!');
-            navigate('/orders');
+            throw error;
           }
         } else {
-          toast.error(adminResponse.message || 'Failed to place order. Please try again.');
+          // For online payment, proceed with payment
+          await handlePayment(finalAmount, orderId);
         }
-      } else {
-        // For online payment, try to create pending order in Firestore first
-        let orderDocRef;
-        try {
-          // Check for existing pending orders for this user
-          const ordersRef = collection(db, 'orders');
-          const q = query(
-            ordersRef,
-            where('userId', '==', user.id),
-            where('status', '==', 'pending'),
-            where('createdAt', '>=', new Date(Date.now() - 5 * 60 * 1000)) // Last 5 minutes
-          );
-          
-          const existingOrders = await getDocs(q);
-          
-          if (!existingOrders.empty) {
-            console.log('Duplicate order detected, using existing order');
-            orderDocRef = {
-              id: existingOrders.docs[0].id
-            };
-          } else {
-            // If no duplicate found, create new order
-            const orderRef = collection(db, 'orders');
-            const batch = writeBatch(db);
-
-            const firestoreOrderData = {
-              ...apiOrderData,
-              userId: user.id,
-              status: 'pending',
-              createdAt: serverTimestamp(),
-              paymentStatus: 'pending',
-              updatedAt: serverTimestamp(),
-              // Explicitly include both phone numbers
-              customerPhone: address.phone,
-              customerAlternativePhone: address.alternativePhone || ''
-            };
-
-            orderDocRef = doc(orderRef);
-            batch.set(orderDocRef, firestoreOrderData);
-
-            // Update orderCount for each item
-            items.forEach(item => {
-              const itemRef = doc(db, 'menuItems', item.id);
-              batch.update(itemRef, {
-                orderCount: increment(1)
-              });
-            });
-
-            await batch.commit();
-          }
-        } catch (firestoreError) {
-          console.error('Firestore error:', firestoreError);
-          // If Firestore fails, generate a temporary order ID
-          orderDocRef = {
-            id: `temp_${Date.now()}`
-          };
+      } catch (error) {
+        console.error('Error placing order:', error);
+        if (error instanceof Error) {
+          toast.error(error.message);
+        } else {
+          toast.error('Failed to place order. Please try again.');
         }
-
-        // Then initiate Razorpay payment
-        await handlePayment(finalAmount, orderDocRef.id);
-      }
-    } catch (error) {
-      console.error('Error placing order:', error);
-      if (error instanceof Error) {
-        toast.error(error.message);
-      } else {
-        toast.error('Failed to place order. Please try again.');
+      } finally {
+        setIsProcessing(false);
       }
     } finally {
-      setIsProcessing(false);
+      checkoutInProgress = false;
     }
   };
 
