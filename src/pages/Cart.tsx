@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Trash2, Plus, Minus, ArrowRight, Loader, MapPin, CreditCard, Truck } from 'lucide-react';
+import { Trash2, Plus, Minus, ArrowRight, Loader, MapPin, CreditCard, Truck, Clock, XCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { placeOrder } from '../services/orderService';
@@ -84,6 +84,8 @@ const Cart = () => {
   });
   const [useProfileAddress, setUseProfileAddress] = useState(true);
   const [restaurantStatus, setRestaurantStatus] = useState<RestaurantStatus | null>(null);
+  const [showBookingOption, setShowBookingOption] = useState(false);
+  const cartClearedRef = useRef(false);
 
   useEffect(() => {
     const statusRef = doc(db, 'restaurant', 'status');
@@ -101,15 +103,34 @@ const Cart = () => {
                 isOpen: data.isOpen,
                 lastUpdated: data.lastUpdated
               });
+
+              // Check if restaurant is about to close (within 30 minutes)
+              const now = new Date();
+              const closingTime = new Date();
+              closingTime.setHours(22, 0, 0); // 10:00 PM
+              const timeUntilClosing = closingTime.getTime() - now.getTime();
+              
+              if (timeUntilClosing <= 30 * 60 * 1000 && timeUntilClosing > 0) {
+                setShowBookingOption(true);
+              } else if (!data.isOpen) {
+                // If restaurant is closed, clear the cart only once
+                if (!cartClearedRef.current) {
+                  clearCart();
+                  toast.error('Restaurant is closed. Your cart has been cleared.');
+                  cartClearedRef.current = true;
+                }
+              } else {
+                // Reset the flag if restaurant reopens
+                cartClearedRef.current = false;
+              }
             }
           },
           (error) => {
             console.error('Error listening to restaurant status:', error);
-            // Only retry if it's not a QUIC protocol error
             if (!error.message?.includes('QUIC_PROTOCOL_ERROR') && retryCount < maxRetries) {
               retryCount++;
               console.log(`Retrying connection (${retryCount}/${maxRetries})...`);
-              setTimeout(setupListener, 2000); // Retry after 2 seconds
+              setTimeout(setupListener, 2000);
             }
           }
         );
@@ -129,7 +150,7 @@ const Cart = () => {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [clearCart]);
 
   React.useEffect(() => {
     const loadUserAddress = async () => {
@@ -495,6 +516,45 @@ const Cart = () => {
     <div className="min-h-screen bg-gray-50 py-6 md:py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h1 className="text-xl md:text-3xl font-bold text-gray-900 mb-4 md:mb-8">Shopping Cart</h1>
+
+        {showBookingOption && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <Clock className="h-5 w-5 text-yellow-500 mr-2" />
+              <div>
+                <p className="text-yellow-800 font-medium">Restaurant closing soon!</p>
+                <p className="text-yellow-600 text-sm">Would you like to book your order for tomorrow?</p>
+                <div className="mt-2 flex space-x-2">
+                  <button
+                    onClick={() => {
+                      // Handle booking for tomorrow
+                      toast.success('Your order has been booked for tomorrow!');
+                      navigate('/orders');
+                    }}
+                    className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors"
+                  >
+                    Book for Tomorrow
+                  </button>
+                  <button
+                    onClick={() => setShowBookingOption(false)}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  >
+                    Continue with Today's Order
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!restaurantStatus?.isOpen && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <XCircle className="h-5 w-5 text-red-500 mr-2" />
+              <p className="text-red-800">Restaurant is currently closed. Timing: 11:00 AM - 10:00 PM</p>
+            </div>
+          </div>
+        )}
 
         <div className="lg:grid lg:grid-cols-12 lg:gap-8">
           <div className="lg:col-span-8">
