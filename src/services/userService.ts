@@ -9,6 +9,7 @@ export interface UserData {
   phone: string;
   alternativePhone?: string;
   photoURL?: string;
+  isAdmin: boolean;
   address?: {
     street: string;
     city: string;

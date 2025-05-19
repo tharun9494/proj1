@@ -17,7 +17,7 @@ interface User {
   name: string;
   email: string | null;
   phone: string;
-  isAdmin?: boolean;
+  isAdmin: boolean;
 }
 
 interface AuthContextType {
@@ -30,6 +30,7 @@ interface AuthContextType {
 }
 
 const ADMIN_EMAIL = 'ontimittatharun2002@gmail.com';
+const ADMIN_EMAILS = [ADMIN_EMAIL, 'pittasbawarchi@gmail.com'];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -40,9 +41,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const isUserAdmin = firebaseUser.email === ADMIN_EMAIL;
+        // Get the ID token to check for admin claim
+        const idTokenResult = await firebaseUser.getIdTokenResult();
+        const isUserAdmin = ADMIN_EMAILS.includes(firebaseUser.email || '') || idTokenResult.claims.admin === true;
+        
         setUser({
           id: firebaseUser.uid,
           name: firebaseUser.displayName || '',
@@ -65,7 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       toast.success('Login successful!');
-      if (email === ADMIN_EMAIL) {
+      if (ADMIN_EMAILS.includes(email)) {
         navigate('/admin');
       } else {
         navigate('/');
@@ -86,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name,
         email,
         phone,
-        isAdmin: email === ADMIN_EMAIL
+        isAdmin: ADMIN_EMAILS.includes(email)
       });
 
       toast.success('Registration successful!');
