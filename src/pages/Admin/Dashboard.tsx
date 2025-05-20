@@ -1489,6 +1489,24 @@ const Dashboard = () => {
     };
   }, [resetOrdersAtMidnight]);
 
+  // Add a helper to update status manually
+  const setRestaurantStatusManual = async (open: boolean) => {
+    try {
+      setIsAutomaticStatus(false);
+      const restaurantRef = doc(db, 'restaurant', 'status');
+      await updateDoc(restaurantRef, {
+        isOpen: open,
+        lastUpdated: serverTimestamp(),
+        isAutomatic: false
+      });
+      setRestaurantStatus(open);
+      toast.success(`Restaurant is now ${open ? 'open' : 'closed'} (Manual Mode)`);
+    } catch (error) {
+      console.error('Error updating restaurant status manually:', error);
+      toast.error('Failed to update restaurant status');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -1525,31 +1543,44 @@ const Dashboard = () => {
                 <div>
                   <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
                   <p className="text-xs sm:text-base text-gray-600">Manage your restaurant's menu and orders</p>
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                    <span className="text-xs sm:text-sm font-semibold">Current Mode: {isAutomaticStatus ? 'Automatic' : 'Manual'}</span>
+                    <span className={`text-xs sm:text-sm font-semibold ${restaurantStatus ? 'text-green-600' : 'text-red-600'}`}>Current Status: {restaurantStatus ? 'Open' : 'Closed'}</span>
+                  </div>
                 </div>
-                <button
-                  onClick={handleToggleRestaurantStatus}
-                  className={`w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm sm:text-base font-medium flex items-center justify-center gap-2 ${
-                    restaurantStatus
-                      ? 'bg-green-500 text-white hover:bg-green-600'
-                      : 'bg-red-500 text-white hover:bg-red-600'
-                  }`}
-                >
+                <div className="flex flex-col sm:flex-row gap-2">
                   {isAutomaticStatus ? (
                     <>
-                      <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
-                      {restaurantStatus ? 'Open (Auto)' : 'Closed (Auto)'}
+                      <button
+                        onClick={() => setIsAutomaticStatus(false)}
+                        className="px-3 py-1.5 rounded bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs sm:text-sm"
+                      >
+                        Switch to Manual Mode
+                      </button>
                     </>
                   ) : (
                     <>
-                      {restaurantStatus ? (
-                        <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                      ) : (
-                        <XCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                      )}
-                      {restaurantStatus ? 'Open (Manual)' : 'Closed (Manual)'}
+                      <button
+                        onClick={() => setIsAutomaticStatus(true)}
+                        className="px-3 py-1.5 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs sm:text-sm"
+                      >
+                        Switch to Automatic Mode
+                      </button>
+                      <button
+                        onClick={() => setRestaurantStatusManual(true)}
+                        className="px-3 py-1.5 rounded bg-green-500 text-white hover:bg-green-600 text-xs sm:text-sm"
+                      >
+                        Open Now (Manual)
+                      </button>
+                      <button
+                        onClick={() => setRestaurantStatusManual(false)}
+                        className="px-3 py-1.5 rounded bg-red-500 text-white hover:bg-red-600 text-xs sm:text-sm"
+                      >
+                        Close Now (Manual)
+                      </button>
                     </>
                   )}
-                </button>
+                </div>
               </div>
             </div>
 
