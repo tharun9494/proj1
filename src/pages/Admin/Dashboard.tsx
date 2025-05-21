@@ -128,14 +128,17 @@ interface RevenueStats {
   daily: {
     amount: number;
     change: number;
+    completedOrders: number;
   };
   weekly: {
     amount: number;
     change: number;
+    completedOrders: number;
   };
   monthly: {
     amount: number;
     change: number;
+    completedOrders: number;
   };
 }
 
@@ -194,9 +197,9 @@ const Dashboard = () => {
     originalPrice: 0
   });
   const [revenueStats, setRevenueStats] = useState<RevenueStats>({
-    daily: { amount: 0, change: 0 },
-    weekly: { amount: 0, change: 0 },
-    monthly: { amount: 0, change: 0 }
+    daily: { amount: 0, change: 0, completedOrders: 0 },
+    weekly: { amount: 0, change: 0, completedOrders: 0 },
+    monthly: { amount: 0, change: 0, completedOrders: 0 }
   });
   const [totalOrders, setTotalOrders] = useState(0);
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -383,9 +386,6 @@ const Dashboard = () => {
 
   // Fix orders listener and stats calculation
   const setupOrdersListener = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     const ordersQuery = query(
       collection(db, 'orders'),
       orderBy('createdAt', 'desc')
@@ -395,7 +395,6 @@ const Dashboard = () => {
       try {
         const allOrders = snapshot.docs.map(doc => {
           const data = doc.data();
-          // Calculate total amount from items
           const items = data.items || [];
           const totalAmount = items.reduce((sum: number, item: any) => {
             const price = Number(item.price) || 0;
@@ -403,8 +402,7 @@ const Dashboard = () => {
             return sum + (price * quantity);
           }, 0);
 
-          // Ensure customer details are properly structured
-          const orderData = {
+          return {
             id: doc.id,
             ...data,
             createdAt: data.createdAt || serverTimestamp(),
@@ -428,50 +426,14 @@ const Dashboard = () => {
                   landmark: data.address?.landmark || ''
                 }
           };
-
-          console.log('Processed order data:', orderData);
-          return orderData;
         }) as Order[];
-
-        console.log('Processing orders:', allOrders.length);
 
         // Update total orders count
         setTotalOrders(allOrders.length);
 
-        // Filter today's orders (created after midnight)
-        const todayOrdersList = allOrders.filter(order => {
-          if (!order.createdAt) return false;
-          const orderDate = order.createdAt.toDate();
-          return orderDate >= today && order.status !== 'completed';
-        });
-
-        // Filter completed orders
-        const completedOrdersList = allOrders.filter(order => {
-          if (order.status !== 'completed') return false;
-          // Use updatedAt or completedAt if available, fallback to createdAt
-          const completedDate = order.updatedAt?.toDate?.() || order.completedAt?.toDate?.() || order.createdAt?.toDate?.();
-          return completedDate && completedDate >= today;
-        });
-
-        // Filter past orders
-        const pastOrdersList = allOrders.filter(order => {
-          if (!order.createdAt) return false;
-          const orderDate = order.createdAt.toDate();
-          return orderDate < today && order.status !== 'completed';
-        });
-
-        console.log('Order counts:', {
-          today: todayOrdersList.length,
-          completed: completedOrdersList.length,
-          past: pastOrdersList.length
-        });
-
-        // Update orders state
-        setOrders({
-          today: todayOrdersList,
-          completed: completedOrdersList,
-          past: pastOrdersList
-        });
+        // Filter orders using the new filterOrders function
+        const filteredOrders = filterOrders(allOrders);
+        setOrders(filteredOrders);
 
       } catch (error) {
         console.error('Error processing orders:', error);
@@ -496,6 +458,9 @@ const Dashboard = () => {
     let daily = 0;
     let weekly = 0;
     let monthly = 0;
+    let dailyCompletedOrders = 0;
+    let weeklyCompletedOrders = 0;
+    let monthlyCompletedOrders = 0;
 
     orders.forEach(order => {
       if (!order.createdAt) {
@@ -506,37 +471,42 @@ const Dashboard = () => {
       const orderDate = order.createdAt.toDate();
       const amount = Number(order.totalAmount) || 0;
 
-      console.log('Processing order:', {
-        id: order.id,
-        date: orderDate,
-        amount: amount,
-        status: order.status
-      });
-
       if (orderDate >= today) {
         daily += amount;
-        console.log('Added to daily revenue:', amount);
+        if (order.status === 'completed') {
+          dailyCompletedOrders++;
+        }
       }
       if (orderDate >= weekAgo) {
         weekly += amount;
-        console.log('Added to weekly revenue:', amount);
+        if (order.status === 'completed') {
+          weeklyCompletedOrders++;
+        }
       }
       if (orderDate >= monthAgo) {
         monthly += amount;
-        console.log('Added to monthly revenue:', amount);
+        if (order.status === 'completed') {
+          monthlyCompletedOrders++;
+        }
       }
     });
 
-    console.log('Final revenue calculations:', {
-      daily,
-      weekly,
-      monthly
-    });
-
     setRevenueStats({
-      daily: { amount: daily, change: 0 },
-      weekly: { amount: weekly, change: 0 },
-      monthly: { amount: monthly, change: 0 }
+      daily: { 
+        amount: daily, 
+        change: 0,
+        completedOrders: dailyCompletedOrders
+      },
+      weekly: { 
+        amount: weekly, 
+        change: 0,
+        completedOrders: weeklyCompletedOrders
+      },
+      monthly: { 
+        amount: monthly, 
+        change: 0,
+        completedOrders: monthlyCompletedOrders
+      }
     });
   }, []);
 
@@ -1108,162 +1078,65 @@ const Dashboard = () => {
       <div className="mt-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">Today's Orders</h2>
-          <button
-            onClick={() => setShowTodayOrders(!showTodayOrders)}
-            className="text-blue-600 hover:text-blue-800"
-          >
-            {showTodayOrders ? 'Hide' : 'Show'}
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              Total: {sortedOrders.length} orders
+            </span>
+            <button
+              onClick={() => setShowTodayOrders(!showTodayOrders)}
+              className="text-blue-600 hover:text-blue-800"
+            >
+              {showTodayOrders ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
         {showTodayOrders && (
           <div className="space-y-4">
             {sortedOrders.map((order, index) => {
-              // Calculate delivery charges
               const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
               const deliveryCharges = itemTotal < 500 ? 40 : 0;
               const finalTotal = itemTotal + deliveryCharges;
+              const orderTime = order.createdAt.toDate().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+              });
+              const queueNumber = sortedOrders.length - index;
 
               return (
                 <div key={order.id} 
                   className="border rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <div className="p-2 sm:p-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
-                        <div className={`w-2 h-2 rounded-full ${
-                          order.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
-                        }`} />
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-sm sm:text-base">{order.userName}</span>
-                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                              #{order.id.slice(-6)}
+                  <div className="p-3">
+                    <div className="flex flex-col sm:flex-row justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium bg-red-100 text-red-800 px-2 py-0.5 rounded">
+                            Queue #{queueNumber}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900">#{order.id.slice(-6)}</span>
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                            Pending
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {orderTime}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium">{order.userName}</span>
+                          <span className="text-sm text-gray-500">{order.userPhone}</span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {order.items.length} items • ₹{finalTotal}
+                          {deliveryCharges > 0 && (
+                            <span className="text-xs text-gray-500 ml-1">
+                              (incl. ₹{deliveryCharges} delivery)
                             </span>
-                          </div>
-                          <div className="text-xs sm:text-sm text-gray-500 mt-1">
-                            {order.items.length} items • ₹{finalTotal}
-                            {deliveryCharges > 0 && (
-                              <span className="text-xs text-gray-500 ml-1">
-                                (incl. ₹{deliveryCharges} delivery)
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
                       {renderPhoneNumbers(order)}
                     </div>
-                  </div>
-                  {/* Expanded View - Better mobile layout */}
-                  {expandedOrderId === order.id && (
-                    <div className="border-t p-2 sm:p-3 bg-gray-50">
-                      <div className="space-y-3">
-                        {/* Customer Details */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                            <div className="bg-white p-2 rounded text-sm">
-                              <p>{order.userName}</p>
-                              <p className="text-gray-500">{order.userPhone}</p>
-                            </div>
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                            <div className="bg-white p-2 rounded text-sm">
-                              <p>{order.address.street}</p>
-                              <p>{order.address.city}, {order.address.pincode}</p>
-                              {order.address.landmark && (
-                                <p className="text-gray-500 mt-1">
-                                  Landmark: {order.address.landmark}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Order Items */}
-                        <div>
-                          <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                          <div className="bg-white rounded p-2 space-y-1.5">
-                            {order.items.map((item) => (
-                              <div key={item.id} className="flex justify-between text-sm">
-                                <span>{item.name} × {item.quantity}</span>
-                                <span>₹{item.price * item.quantity}</span>
-                              </div>
-                            ))}
-                            <div className="border-t pt-2 mt-2">
-                              <div className="flex justify-between text-sm">
-                                <span>Items Total</span>
-                                <span>₹{itemTotal}</span>
-                              </div>
-                              {deliveryCharges > 0 && (
-                                <div className="flex justify-between text-sm">
-                                  <span>Delivery Charges</span>
-                                  <span>₹{deliveryCharges}</span>
-                                </div>
-                              )}
-                              <div className="flex justify-between text-sm font-medium mt-1">
-                                <span>Total Amount</span>
-                                <span>₹{finalTotal}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex gap-2">
-                          {order.status !== 'completed' && (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await handleUpdateOrderStatus(order.id, 'completed');
-                                  toast.success('Order marked as completed');
-                                } catch (error) {
-                                  console.error('Error completing order:', error);
-                                  toast.error('Failed to complete order');
-                                }
-                              }}
-                              className="flex-1 bg-green-500 text-white py-2 px-3 rounded text-sm font-medium hover:bg-green-600 flex items-center justify-center gap-2"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                              Mark as Completed
-                            </button>
-                          )}
-                          {order.status === 'completed' && (
-                            <div className="flex-1 bg-green-100 text-green-800 py-2 px-3 rounded text-sm font-medium flex items-center justify-center gap-2">
-                              <CheckCircle className="h-4 w-4" />
-                              Completed
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Order Status and Expand Button */}
-                  <div className="border-t p-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        order.status === 'completed' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-blue-100 text-blue-800'
-                      }`}>
-                        {order.status === 'completed' ? 'Completed' : 'Pending'}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {order.paymentMethod} • {order.paymentStatus}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                    >
-                      {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
-                      {expandedOrderId === order.id ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </button>
                   </div>
                 </div>
               );
@@ -1280,133 +1153,191 @@ const Dashboard = () => {
       b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()
     );
 
+    // Group orders by date
+    const groupedOrders = sortedOrders.reduce((acc, order) => {
+      const date = order.createdAt.toDate().toLocaleDateString();
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+      acc[date].push(order);
+      return acc;
+    }, {} as Record<string, Order[]>);
+
     return (
       <div className="mt-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">Completed Orders</h2>
-          <button
-            onClick={() => setShowCompletedOrders(!showCompletedOrders)}
-            className="text-blue-600 hover:text-blue-800"
-          >
-            {showCompletedOrders ? 'Hide' : 'Show'}
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              Total: {sortedOrders.length} orders
+            </span>
+            <button
+              onClick={() => setShowCompletedOrders(!showCompletedOrders)}
+              className="text-blue-600 hover:text-blue-800"
+            >
+              {showCompletedOrders ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
         {showCompletedOrders && (
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-            {sortedOrders.map((order, index) => {
-              // Calculate delivery charges
-              const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-              const deliveryCharges = itemTotal < 500 ? 40 : 0;
-              const finalTotal = itemTotal + deliveryCharges;
-
-              return (
-                <div key={order.id} 
-                  className="border rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <span className="text-sm font-semibold text-gray-500">#{sortedOrders.length - index}</span>
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium">{order.userName}</span>
-                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                            #{order.id.slice(-6)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-500 mt-1">
-                          {order.items.length} items • ₹{finalTotal}
-                          {deliveryCharges > 0 && (
-                            <span className="text-xs text-gray-500 ml-1">
-                              (incl. ₹{deliveryCharges} delivery)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {renderPhoneNumbers(order)}
-                  </div>
-                  {/* Expanded View */}
-                  {expandedOrderId === order.id && (
-                    <div className="border-t p-3 bg-gray-50 space-y-4">
-                      {/* Customer Details */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
-                          <div className="bg-white p-2 rounded">
-                            <p className="text-sm">{order.userName}</p>
-                            <p className="text-sm text-gray-500">{order.userPhone}</p>
-                          </div>
-                        </div>
-                        <div>
-                          <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
-                          <div className="bg-white p-2 rounded">
-                            <p className="text-sm">{order.address.street}</p>
-                            <p className="text-sm">{order.address.city}, {order.address.pincode}</p>
-                            {order.address.landmark && (
-                              <p className="text-sm text-gray-500 mt-1">
-                                Landmark: {order.address.landmark}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Order Items */}
-                      <div>
-                        <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
-                        <div className="bg-white rounded p-2 space-y-2">
-                          {order.items.map((item) => (
-                            <div key={item.id} className="flex justify-between text-sm">
-                              <span>{item.name} × {item.quantity}</span>
-                              <span>₹{item.price * item.quantity}</span>
-                            </div>
-                          ))}
-                          <div className="border-t pt-2 mt-2">
-                            <div className="flex justify-between text-sm">
-                              <span>Items Total</span>
-                              <span>₹{itemTotal}</span>
-                            </div>
-                            {deliveryCharges > 0 && (
-                              <div className="flex justify-between text-sm">
-                                <span>Delivery Charges</span>
-                                <span>₹{deliveryCharges}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between text-sm font-medium mt-1">
-                              <span>Total Amount</span>
-                              <span>₹{finalTotal}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Order Status and Expand Button */}
-                  <div className="border-t p-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
-                        Completed
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {order.paymentMethod} • {order.paymentStatus}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                    >
-                      {expandedOrderId === order.id ? 'Hide Details' : 'Show Details'}
-                      {expandedOrderId === order.id ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
+          <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+            {Object.entries(groupedOrders).map(([date, dateOrders]) => (
+              <div key={date} className="bg-white rounded-lg shadow-sm">
+                <div className="p-3 bg-gray-50 border-b">
+                  <h3 className="font-medium text-gray-700">{date}</h3>
+                  <p className="text-sm text-gray-500">{dateOrders.length} orders completed</p>
                 </div>
-              );
-            })}
+                <div className="divide-y">
+                  {dateOrders.map((order, index) => {
+                    const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    const deliveryCharges = itemTotal < 500 ? 40 : 0;
+                    const finalTotal = itemTotal + deliveryCharges;
+                    const orderTime = order.createdAt.toDate().toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true
+                    });
+                    const completedTime = order.completedAt?.toDate().toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true
+                    });
+                    const queueNumber = dateOrders.length - index;
+
+                    return (
+                      <div key={order.id} className="p-3 hover:bg-gray-50">
+                        <div className="flex flex-col sm:flex-row justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-medium bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                                Queue #{queueNumber}
+                              </span>
+                              <span className="text-sm font-medium text-gray-900">#{order.id.slice(-6)}</span>
+                              <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                                Completed
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                Ordered: {orderTime}
+                              </span>
+                              {completedTime && (
+                                <span className="text-xs text-gray-500">
+                                  Completed: {completedTime}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="font-medium">{order.userName}</span>
+                              <span className="text-sm text-gray-500">{order.userPhone}</span>
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {order.items.length} items • ₹{finalTotal}
+                              {deliveryCharges > 0 && (
+                                <span className="text-xs text-gray-500 ml-1">
+                                  (incl. ₹{deliveryCharges} delivery)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {renderPhoneNumbers(order)}
+                            <button
+                              onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                            >
+                              {expandedOrderId === order.id ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Expanded Order Details */}
+                        {expandedOrderId === order.id && (
+                          <div className="mt-3 pt-3 border-t space-y-3">
+                            {/* Customer Details */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                                <div className="bg-gray-50 p-2 rounded text-sm">
+                                  <p>{order.userName}</p>
+                                  <p className="text-gray-500">{order.userPhone}</p>
+                                  {order.alternativePhone && (
+                                    <p className="text-gray-500">Alt: {order.alternativePhone}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                                <div className="bg-gray-50 p-2 rounded text-sm">
+                                  <p>{order.address.street}</p>
+                                  <p>{order.address.city}, {order.address.pincode}</p>
+                                  {order.address.landmark && (
+                                    <p className="text-gray-500 mt-1">
+                                      Landmark: {order.address.landmark}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Order Items */}
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                              <div className="bg-gray-50 rounded p-2 space-y-1.5">
+                                {order.items.map((item) => (
+                                  <div key={item.id} className="flex justify-between text-sm">
+                                    <span>{item.name} × {item.quantity}</span>
+                                    <span>₹{item.price * item.quantity}</span>
+                                  </div>
+                                ))}
+                                <div className="border-t pt-2 mt-2">
+                                  <div className="flex justify-between text-sm">
+                                    <span>Items Total</span>
+                                    <span>₹{itemTotal}</span>
+                                  </div>
+                                  {deliveryCharges > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                      <span>Delivery Charges</span>
+                                      <span>₹{deliveryCharges}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-between text-sm font-medium mt-1">
+                                    <span>Total Amount</span>
+                                    <span>₹{finalTotal}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Payment Details */}
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-500 mb-1">Payment Details</h5>
+                              <div className="bg-gray-50 p-2 rounded text-sm">
+                                <div className="flex justify-between">
+                                  <span>Method:</span>
+                                  <span className="font-medium">{order.paymentMethod}</span>
+                                </div>
+                                <div className="flex justify-between mt-1">
+                                  <span>Status:</span>
+                                  <span className={`font-medium ${
+                                    order.paymentStatus === 'success' ? 'text-green-600' : 
+                                    order.paymentStatus === 'pending' ? 'text-yellow-600' : 'text-red-600'
+                                  }`}>
+                                    {order.paymentStatus.toUpperCase()}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1450,7 +1381,7 @@ const Dashboard = () => {
   }, [checkAndUpdateRestaurantStatus]);
 
   // Function to reset orders at midnight
-  const resetOrdersAtMidnight = useCallback(() => {
+  const resetTodayOrders = useCallback(() => {
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -1465,31 +1396,73 @@ const Dashboard = () => {
         const batch = writeBatch(db);
         orders.today.forEach(order => {
           const orderRef = doc(db, 'orders', order.id);
-          batch.update(orderRef, { status: 'completed' });
+          batch.update(orderRef, { 
+            status: 'completed',
+            completedAt: serverTimestamp()
+          });
         });
 
         await batch.commit();
+        toast.success('Today\'s orders have been moved to completed orders');
         
         // Schedule next reset
-        resetOrdersAtMidnight();
+        resetTodayOrders();
       } catch (error) {
         console.error('Error resetting orders:', error);
+        toast.error('Failed to reset today\'s orders');
       }
     }, timeUntilMidnight);
 
-    // Return cleanup function
     return () => clearTimeout(timeoutId);
   }, [orders.today]);
 
-  // Fix the useEffect cleanup
+  // Add useEffect for resetTodayOrders
   useEffect(() => {
-    const cleanup = resetOrdersAtMidnight();
+    const cleanup = resetTodayOrders();
     return () => {
       if (cleanup) cleanup();
     };
-  }, [resetOrdersAtMidnight]);
+  }, [resetTodayOrders]);
 
-  // Add a helper to update status manually
+  // Add this function after the existing useEffect hooks
+  const filterOrders = useCallback((orders: Order[]) => {
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    // Get the first day of current month
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    firstDayOfMonth.setHours(0, 0, 0, 0);
+
+    // Filter today's orders (only from today)
+    const todayOrders = orders.filter(order => {
+      if (!order.createdAt) return false;
+      const orderDate = order.createdAt.toDate();
+      return orderDate >= today && order.status !== 'completed';
+    });
+
+    // Filter completed orders (from start of month until now)
+    const completedOrders = orders.filter(order => {
+      if (!order.createdAt) return false;
+      const orderDate = order.createdAt.toDate();
+      return orderDate >= firstDayOfMonth && order.status === 'completed';
+    });
+
+    // Filter past orders (before today and not completed)
+    const pastOrders = orders.filter(order => {
+      if (!order.createdAt) return false;
+      const orderDate = order.createdAt.toDate();
+      return orderDate < today && order.status !== 'completed';
+    });
+
+    return {
+      today: todayOrders,
+      completed: completedOrders,
+      past: pastOrders
+    };
+  }, []);
+
+  // Add back the setRestaurantStatusManual function
   const setRestaurantStatusManual = async (open: boolean) => {
     try {
       setIsAutomaticStatus(false);
@@ -1740,9 +1713,9 @@ const Dashboard = () => {
                   </div>
 
                   {/* Additional Stats */}
-                  <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="mt-4 grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
                     <div>
-                      <p className="text-xs sm:text-sm text-gray-500">Orders</p>
+                      <p className="text-xs sm:text-sm text-gray-500">Total Orders</p>
                       <p className="text-lg sm:text-xl font-semibold mt-1">
                         {selectedRevenuePeriod === 'daily' 
                           ? orders.today.length
@@ -1763,25 +1736,15 @@ const Dashboard = () => {
                       </p>
                     </div>
                     <div>
+                      <p className="text-xs sm:text-sm text-gray-500">Completed Orders</p>
+                      <p className="text-lg sm:text-xl font-semibold mt-1">
+                        {revenueStats[selectedRevenuePeriod].completedOrders}
+                      </p>
+                    </div>
+                    <div>
                       <p className="text-xs sm:text-sm text-gray-500">Avg. Order Value</p>
                       <p className="text-lg sm:text-xl font-semibold mt-1">
-                        ₹{(revenueStats[selectedRevenuePeriod].amount / (
-                          selectedRevenuePeriod === 'daily' 
-                            ? Math.max(orders.today.length, 1)
-                            : selectedRevenuePeriod === 'weekly'
-                            ? Math.max(orders.completed.filter(order => {
-                                const orderDate = order.createdAt.toDate();
-                                const weekAgo = new Date();
-                                weekAgo.setDate(weekAgo.getDate() - 7);
-                                return orderDate >= weekAgo;
-                              }).length, 1)
-                            : Math.max(orders.completed.filter(order => {
-                                const orderDate = order.createdAt.toDate();
-                                const monthAgo = new Date();
-                                monthAgo.setMonth(monthAgo.getMonth() - 1);
-                                return orderDate >= monthAgo;
-                              }).length, 1)
-                        )).toFixed(0)}
+                        ₹{(revenueStats[selectedRevenuePeriod].amount / Math.max(revenueStats[selectedRevenuePeriod].completedOrders, 1)).toFixed(0)}
                       </p>
                     </div>
                   </div>
