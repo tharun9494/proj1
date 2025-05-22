@@ -8,7 +8,9 @@ const firebaseConfig = {
   apiKey: "AIzaSyCRKNc4sMLeQjh1p3QcXw5dgTWBBoLL6xc",
   projectId: "pittas-fb2a8",
   storageBucket: "pittas-fb2a8.firebasestorage.app",
-  appId: "1:215585759764:android:d1cef04e916bf7e1b27d01"
+  appId: "1:215585759764:android:d1cef04e916bf7e1b27d01",
+  authDomain: "pittas-fb2a8.firebaseapp.com",
+  messagingSenderId: "215585759764"
 };
 
 // Initialize Firebase with better error handling
