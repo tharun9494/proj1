@@ -1135,8 +1135,91 @@ const Dashboard = () => {
                           )}
                         </div>
                       </div>
-                      {renderPhoneNumbers(order)}
+                      <div className="flex items-center gap-2">
+                        {renderPhoneNumbers(order)}
+                        <button
+                          onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
+                          className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium"
+                        >
+                          Complete
+                        </button>
+                        <button
+                          onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                        >
+                          {expandedOrderId === order.id ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Expanded Order Details */}
+                    {expandedOrderId === order.id && (
+                      <div className="mt-3 pt-3 border-t space-y-3">
+                        {/* Customer Details */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <h5 className="text-xs font-medium text-gray-500 mb-1">Customer Details</h5>
+                            <div className="bg-gray-50 p-2 rounded text-sm">
+                              <p>{order.userName}</p>
+                              <p className="text-gray-500">{order.userPhone}</p>
+                              {order.alternativePhone && (
+                                <p className="text-gray-500">Alt: {order.alternativePhone}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-medium text-gray-500 mb-1">Delivery Address</h5>
+                            <div className="bg-gray-50 p-2 rounded text-sm">
+                              <p>{order.address.street}</p>
+                              <p>{order.address.city}</p>
+                              <p>{order.address.pincode}</p>
+                              {order.address.landmark && (
+                                <p className="text-gray-500">Landmark: {order.address.landmark}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Order Items */}
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Order Items</h5>
+                          <div className="bg-gray-50 rounded divide-y">
+                            {order.items.map((item, idx) => (
+                              <div key={idx} className="p-2 flex justify-between items-center">
+                                <div>
+                                  <p className="font-medium">{item.name}</p>
+                                  <p className="text-sm text-gray-500">₹{item.price} × {item.quantity}</p>
+                                </div>
+                                <p className="font-medium">₹{item.price * item.quantity}</p>
+                              </div>
+                            ))}
+                            {deliveryCharges > 0 && (
+                              <div className="p-2 flex justify-between items-center">
+                                <p className="text-gray-500">Delivery Charges</p>
+                                <p className="font-medium">₹{deliveryCharges}</p>
+                              </div>
+                            )}
+                            <div className="p-2 flex justify-between items-center bg-gray-100">
+                              <p className="font-medium">Total</p>
+                              <p className="font-medium">₹{finalTotal}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment Details */}
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-500 mb-1">Payment Details</h5>
+                          <div className="bg-gray-50 p-2 rounded text-sm">
+                            <p>Method: {order.paymentMethod}</p>
+                            <p>Status: <span className={order.paymentStatus === 'success' ? 'text-green-600' : 'text-red-600'}>{order.paymentStatus}</span></p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
