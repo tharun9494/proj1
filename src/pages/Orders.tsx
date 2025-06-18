@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShoppingBag, ArrowRight } from 'lucide-react';
+import { ShoppingBag, ArrowRight, Gift } from 'lucide-react';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -31,6 +31,11 @@ interface Order {
     city: string;
     pincode: string;
     landmark?: string;
+  };
+  discountInfo?: {
+    type: 'first_order' | 'high_value' | 'regular' | 'none';
+    amount: number;
+    percentage?: number;
   };
 }
 
@@ -236,7 +241,8 @@ const Orders = () => {
                   {(() => {
                     const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                     const deliveryCharges = itemTotal < 500 ? 40 : 0;
-                    const finalTotal = itemTotal + deliveryCharges;
+                    const discountAmount = order.discountInfo?.amount || 0;
+                    const finalTotal = itemTotal + deliveryCharges - discountAmount;
 
                     return (
                       <div className="space-y-2">
@@ -248,6 +254,17 @@ const Orders = () => {
                           <div className="flex justify-between">
                             <p className="text-sm text-gray-600">Delivery Charges</p>
                             <p className="text-sm text-gray-600">₹{deliveryCharges}</p>
+                          </div>
+                        )}
+                        {discountAmount > 0 && (
+                          <div className="flex justify-between">
+                            <p className="text-sm text-green-600 flex items-center">
+                              <Gift className="h-3 w-3 mr-1" />
+                              {order.discountInfo?.type === 'first_order' && `First Order Discount (${order.discountInfo.percentage}%)`}
+                              {order.discountInfo?.type === 'high_value' && 'High Value Discount (₹200)'}
+                              {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
+                            </p>
+                            <p className="text-sm text-green-600">-₹{discountAmount}</p>
                           </div>
                         )}
                         <div className="flex justify-between pt-2 border-t">

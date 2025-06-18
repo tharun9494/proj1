@@ -90,6 +90,11 @@ interface Order {
   paymentMethod: 'ONLINE' | 'COD';
   updatedAt?: any;
   completedAt?: any;
+  discountInfo?: {
+    type: 'first_order' | 'high_value' | 'regular' | 'none';
+    amount: number;
+    percentage?: number;
+  };
 }
 
 interface Message {
@@ -1133,6 +1138,11 @@ const Dashboard = () => {
                               (incl. ₹{deliveryCharges} delivery)
                             </span>
                           )}
+                          {order.discountInfo?.amount && order.discountInfo.amount > 0 && (
+                            <span className="text-xs text-green-600 ml-1">
+                              (-₹{order.discountInfo.amount} discount)
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1317,6 +1327,11 @@ const Dashboard = () => {
                               {deliveryCharges > 0 && (
                                 <span className="text-xs text-gray-500 ml-1">
                                   (incl. ₹{deliveryCharges} delivery)
+                                </span>
+                              )}
+                              {order.discountInfo?.amount && order.discountInfo.amount > 0 && (
+                                <span className="text-xs text-green-600 ml-1">
+                                  (-₹{order.discountInfo.amount} discount)
                                 </span>
                               )}
                             </div>

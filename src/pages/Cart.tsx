@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Trash2, Plus, Minus, ArrowRight, Loader, MapPin, CreditCard, Truck, Clock, XCircle } from 'lucide-react';
+import { Trash2, Plus, Minus, ArrowRight, Loader, MapPin, CreditCard, Truck, Clock, XCircle, Gift } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { placeOrder } from '../services/orderService';
@@ -47,6 +47,10 @@ const DISCOUNT_PERCENTAGE = 5;
 
 const TOTAL_GST_PERCENTAGE = 5; // Total GST percentage (2.5% CGST + 2.5% SGST)
 
+// Discount constants
+const FIRST_ORDER_DISCOUNT_PERCENTAGE = 50; // 50% discount for first order
+const HIGH_VALUE_ORDER_DISCOUNT = 200; // ₹200 discount for orders above ₹500
+
 // Update delivery fee logic
 const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD') => {
   if (subtotal >= 500) {
@@ -63,9 +67,59 @@ const calculateGST = (amount: number) => {
   };
 };
 
-// Calculate discount amount  x
-const calculateDiscount = (amount: number) => {
-  return Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
+// Check if this is user's first order
+const checkIfFirstOrder = async (userId: string): Promise<boolean> => {
+  try {
+    const ordersRef = collection(db, 'orders');
+    const q = query(
+      ordersRef,
+      where('userId', '==', userId),
+      where('status', 'in', ['pending', 'confirmed', 'completed'])
+    );
+    
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.empty; // If no orders exist, this is the first order
+  } catch (error) {
+    console.error('Error checking first order:', error);
+    return false; // Default to false if there's an error
+  }
+};
+
+// Calculate discount based on order type and amount
+const calculateDiscount = async (amount: number, userId: string | null): Promise<{
+  amount: number;
+  type: 'first_order' | 'high_value' | 'regular' | 'none';
+  percentage?: number;
+}> => {
+  if (!userId) {
+    return { amount: 0, type: 'none' };
+  }
+
+  const isFirstOrder = await checkIfFirstOrder(userId);
+  
+  if (isFirstOrder) {
+    // First order: 50% discount
+    const firstOrderDiscount = Math.round((amount * FIRST_ORDER_DISCOUNT_PERCENTAGE) / 100);
+    return {
+      amount: firstOrderDiscount,
+      type: 'first_order',
+      percentage: FIRST_ORDER_DISCOUNT_PERCENTAGE
+    };
+  } else if (amount >= 500) {
+    // Orders above ₹500: ₹200 discount
+    return {
+      amount: HIGH_VALUE_ORDER_DISCOUNT,
+      type: 'high_value'
+    };
+  } else {
+    // Regular discount: 5%
+    const regularDiscount = Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
+    return {
+      amount: regularDiscount,
+      type: 'regular',
+      percentage: DISCOUNT_PERCENTAGE
+    };
+  }
 };
 
 const Cart = () => {
@@ -86,6 +140,25 @@ const Cart = () => {
   const [restaurantStatus, setRestaurantStatus] = useState<RestaurantStatus | null>(null);
   const [showBookingOption, setShowBookingOption] = useState(false);
   const cartClearedRef = useRef(false);
+  const [discountInfo, setDiscountInfo] = useState<{
+    amount: number;
+    type: 'first_order' | 'high_value' | 'regular' | 'none';
+    percentage?: number;
+  }>({ amount: 0, type: 'none' });
+
+  // Calculate discount when user or subtotal changes
+  useEffect(() => {
+    const updateDiscount = async () => {
+      if (user?.id && totalAmount > 0) {
+        const discount = await calculateDiscount(totalAmount, user.id);
+        setDiscountInfo(discount);
+      } else {
+        setDiscountInfo({ amount: 0, type: 'none' });
+      }
+    };
+
+    updateDiscount();
+  }, [user?.id, totalAmount]);
 
   useEffect(() => {
     const statusRef = doc(db, 'restaurant', 'status');
@@ -278,7 +351,12 @@ const Cart = () => {
         customerName: user.name,
         customerEmail: user.email,
         phone: address.phone,
-        alternativePhone: address.alternativePhone
+        alternativePhone: address.alternativePhone,
+        discountInfo: {
+          type: discountInfo.type,
+          amount: discountInfo.amount,
+          percentage: discountInfo.percentage
+        }
       };
 
       // Check for existing pending orders
@@ -322,7 +400,12 @@ const Cart = () => {
               paymentStatus: 'pending',
               updatedAt: serverTimestamp(),
               customerPhone: address.phone,
-              customerAlternativePhone: address.alternativePhone || ''
+              customerAlternativePhone: address.alternativePhone || '',
+              discountInfo: {
+                type: discountInfo.type,
+                amount: discountInfo.amount,
+                percentage: discountInfo.percentage
+              }
             };
 
             // Use a transaction to ensure atomicity
@@ -409,7 +492,12 @@ const Cart = () => {
                 paymentId: response.razorpay_payment_id,
                 updatedAt: serverTimestamp(),
                 customerPhone: orderData.phone,
-                customerAlternativePhone: orderData.alternativePhone || ''
+                customerAlternativePhone: orderData.alternativePhone || '',
+                discountInfo: {
+                  type: discountInfo.type,
+                  amount: discountInfo.amount,
+                  percentage: discountInfo.percentage
+                }
               };
 
               // Use a transaction to ensure atomicity
@@ -474,7 +562,7 @@ const Cart = () => {
   const subtotal = totalAmount;
   const gstAmounts = calculateGST(subtotal);
   const totalGST = gstAmounts.CGST + gstAmounts.SGST;
-  const discountAmount = calculateDiscount(subtotal);
+  const discountAmount = discountInfo.amount;
   const deliveryFee = calculateDeliveryFee(subtotal, paymentMethod);
   const finalAmount = subtotal + totalGST - discountAmount + deliveryFee;
 
@@ -552,6 +640,35 @@ const Cart = () => {
             <div className="flex items-center">
               <XCircle className="h-5 w-5 text-red-500 mr-2" />
               <p className="text-red-800">Restaurant is currently closed. Timing: 11:00 AM - 10:00 PM</p>
+            </div>
+          </div>
+        )}
+
+        {/* Discount Information Banner */}
+        {user && discountInfo.type !== 'none' && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <Gift className="h-5 w-5 text-green-500 mr-2" />
+              <div>
+                {discountInfo.type === 'first_order' && (
+                  <>
+                    <p className="text-green-800 font-medium">🎉 Welcome! First Order Special</p>
+                    <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your first order!</p>
+                  </>
+                )}
+                {discountInfo.type === 'high_value' && (
+                  <>
+                    <p className="text-green-800 font-medium">🎉 High Value Order Bonus</p>
+                    <p className="text-green-600 text-sm">You get ₹{HIGH_VALUE_ORDER_DISCOUNT} off on orders above ₹500!</p>
+                  </>
+                )}
+                {discountInfo.type === 'regular' && (
+                  <>
+                    <p className="text-green-800 font-medium">💝 Regular Customer Discount</p>
+                    <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your order!</p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -780,8 +897,33 @@ const Cart = () => {
 
                   {/* Discount Section */}
                   <div className="py-2 md:py-4 flex items-center justify-between">
-                    <dt className="text-xs md:text-sm text-green-600">Discount ({DISCOUNT_PERCENTAGE}%)</dt>
-                    <dd className="text-xs md:text-sm font-medium text-green-600">-₹{discountAmount}</dd>
+                    <dt className="text-xs md:text-sm text-green-600 flex items-center">
+                      {discountInfo.type === 'first_order' && (
+                        <>
+                          <Gift className="h-4 w-4 mr-1" />
+                          First Order Discount ({discountInfo.percentage}%)
+                        </>
+                      )}
+                      {discountInfo.type === 'high_value' && (
+                        <>
+                          <Gift className="h-4 w-4 mr-1" />
+                          High Value Discount (₹{HIGH_VALUE_ORDER_DISCOUNT})
+                        </>
+                      )}
+                      {discountInfo.type === 'regular' && (
+                        <>
+                          Discount ({discountInfo.percentage}%)
+                        </>
+                      )}
+                      {discountInfo.type === 'none' && (
+                        <>
+                          Discount
+                        </>
+                      )}
+                    </dt>
+                    <dd className="text-xs md:text-sm font-medium text-green-600">
+                      {discountAmount > 0 ? `-₹${discountAmount}` : '₹0'}
+                    </dd>
                   </div>
                   
                   {/* Delivery Fee Section with Info */}
