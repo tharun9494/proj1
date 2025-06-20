@@ -88,7 +88,7 @@ const checkIfFirstOrder = async (userId: string): Promise<boolean> => {
 // Calculate discount based on order type and amount
 const calculateDiscount = async (amount: number, userId: string | null): Promise<{
   amount: number;
-  type: 'first_order' | 'high_value' | 'regular' | 'none';
+  type: 'first_order' | 'none';
   percentage?: number;
 }> => {
   if (!userId) {
@@ -96,7 +96,7 @@ const calculateDiscount = async (amount: number, userId: string | null): Promise
   }
 
   const isFirstOrder = await checkIfFirstOrder(userId);
-  
+
   if (isFirstOrder) {
     // First order: 50% discount
     const firstOrderDiscount = Math.round((amount * FIRST_ORDER_DISCOUNT_PERCENTAGE) / 100);
@@ -105,20 +105,9 @@ const calculateDiscount = async (amount: number, userId: string | null): Promise
       type: 'first_order',
       percentage: FIRST_ORDER_DISCOUNT_PERCENTAGE
     };
-  } else if (amount >= 500) {
-    // Orders above ₹500: ₹200 discount
-    return {
-      amount: HIGH_VALUE_ORDER_DISCOUNT,
-      type: 'high_value'
-    };
   } else {
-    // Regular discount: 5%
-    const regularDiscount = Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
-    return {
-      amount: regularDiscount,
-      type: 'regular',
-      percentage: DISCOUNT_PERCENTAGE
-    };
+    // No discount for second and later orders
+    return { amount: 0, type: 'none' };
   }
 };
 
@@ -142,7 +131,7 @@ const Cart = () => {
   const cartClearedRef = useRef(false);
   const [discountInfo, setDiscountInfo] = useState<{
     amount: number;
-    type: 'first_order' | 'high_value' | 'regular' | 'none';
+    type: 'first_order' | 'none';
     percentage?: number;
   }>({ amount: 0, type: 'none' });
 
@@ -645,29 +634,24 @@ const Cart = () => {
         )}
 
         {/* Discount Information Banner */}
-        {user && discountInfo.type !== 'none' && (
+        {user && discountInfo.type === 'first_order' && (
           <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex items-center">
               <Gift className="h-5 w-5 text-green-500 mr-2" />
               <div>
-                {discountInfo.type === 'first_order' && (
-                  <>
-                    <p className="text-green-800 font-medium">🎉 Welcome! First Order Special</p>
-                    <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your first order!</p>
-                  </>
-                )}
-                {discountInfo.type === 'high_value' && (
-                  <>
-                    <p className="text-green-800 font-medium">🎉 High Value Order Bonus</p>
-                    <p className="text-green-600 text-sm">You get ₹{HIGH_VALUE_ORDER_DISCOUNT} off on orders above ₹500!</p>
-                  </>
-                )}
-                {discountInfo.type === 'regular' && (
-                  <>
-                    <p className="text-green-800 font-medium">💝 Regular Customer Discount</p>
-                    <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your order!</p>
-                  </>
-                )}
+                <p className="text-green-800 font-medium">🎉 Welcome! First Order Special</p>
+                <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your first order!</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {user && discountInfo.type === 'none' && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <Gift className="h-5 w-5 text-green-500 mr-2" />
+              <div>
+                <p className="text-green-800 font-medium">No discount available</p>
+                <p className="text-green-600 text-sm">Regular price applies for this order.</p>
               </div>
             </div>
           </div>
@@ -902,17 +886,6 @@ const Cart = () => {
                         <>
                           <Gift className="h-4 w-4 mr-1" />
                           First Order Discount ({discountInfo.percentage}%)
-                        </>
-                      )}
-                      {discountInfo.type === 'high_value' && (
-                        <>
-                          <Gift className="h-4 w-4 mr-1" />
-                          High Value Discount (₹{HIGH_VALUE_ORDER_DISCOUNT})
-                        </>
-                      )}
-                      {discountInfo.type === 'regular' && (
-                        <>
-                          Discount ({discountInfo.percentage}%)
                         </>
                       )}
                       {discountInfo.type === 'none' && (
