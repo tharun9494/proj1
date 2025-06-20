@@ -242,12 +242,12 @@ const Orders = () => {
                     const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                     const deliveryCharges = itemTotal < 500 ? 40 : 0;
                     const discountAmount = order.discountInfo?.amount || 0;
-                    const finalTotal = itemTotal + deliveryCharges - discountAmount;
+                    const finalTotal = itemTotal + deliveryCharges;
 
                     return (
                       <div className="space-y-2">
                         <div className="flex justify-between">
-                          <p className="text-sm text-gray-600">Items Total</p>
+                          <p className="text-sm text-gray-600">Subtotal (before discount)</p>
                           <p className="text-sm text-gray-600">₹{itemTotal}</p>
                         </div>
                         {deliveryCharges > 0 && (
@@ -261,7 +261,6 @@ const Orders = () => {
                             <p className="text-sm text-green-600 flex items-center">
                               <Gift className="h-3 w-3 mr-1" />
                               {order.discountInfo?.type === 'first_order' && `First Order Discount (${order.discountInfo.percentage}%)`}
-                              {order.discountInfo?.type === 'high_value' && 'High Value Discount (₹200)'}
                               {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
                             </p>
                             <p className="text-sm text-green-600">-₹{discountAmount}</p>
