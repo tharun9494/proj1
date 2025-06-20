@@ -1139,9 +1139,15 @@ const Dashboard = () => {
                             </span>
                           )}
                           {order.discountInfo?.amount && order.discountInfo.amount > 0 && (
-                            <span className="text-xs text-green-600 ml-1">
-                              (-₹{order.discountInfo.amount} discount)
-                            </span>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-green-600">
+                                {order.discountInfo?.type === 'first_order' && `First Order Discount (${order.discountInfo.percentage}%)`}
+                                {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
+                                {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
+                                {order.discountInfo?.type === 'none' && 'Discount'}
+                              </span>
+                              <span className="text-green-600">-₹{order.discountInfo.amount}</span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1330,9 +1336,15 @@ const Dashboard = () => {
                                 </span>
                               )}
                               {order.discountInfo?.amount && order.discountInfo.amount > 0 && (
-                                <span className="text-xs text-green-600 ml-1">
-                                  (-₹{order.discountInfo.amount} discount)
-                                </span>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-green-600">
+                                    {order.discountInfo?.type === 'first_order' && `First Order Discount (${order.discountInfo.percentage}%)`}
+                                    {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
+                                    {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
+                                    {order.discountInfo?.type === 'none' && 'Discount'}
+                                  </span>
+                                  <span className="text-green-600">-₹{order.discountInfo.amount}</span>
+                                </div>
                               )}
                             </div>
                           </div>
