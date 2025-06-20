@@ -88,7 +88,7 @@ const checkIfFirstOrder = async (userId: string): Promise<boolean> => {
 // Calculate discount based on order type and amount
 const calculateDiscount = async (amount: number, userId: string | null): Promise<{
   amount: number;
-  type: 'first_order' | 'none';
+  type: 'first_order' | 'regular' | 'none';
   percentage?: number;
 }> => {
   if (!userId) {
@@ -106,8 +106,13 @@ const calculateDiscount = async (amount: number, userId: string | null): Promise
       percentage: FIRST_ORDER_DISCOUNT_PERCENTAGE
     };
   } else {
-    // No discount for second and later orders
-    return { amount: 0, type: 'none' };
+    // All other orders: 5% discount
+    const regularDiscount = Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
+    return {
+      amount: regularDiscount,
+      type: 'regular',
+      percentage: DISCOUNT_PERCENTAGE
+    };
   }
 };
 
@@ -131,7 +136,7 @@ const Cart = () => {
   const cartClearedRef = useRef(false);
   const [discountInfo, setDiscountInfo] = useState<{
     amount: number;
-    type: 'first_order' | 'none';
+    type: 'first_order' | 'regular' | 'none';
     percentage?: number;
   }>({ amount: 0, type: 'none' });
 
@@ -645,6 +650,17 @@ const Cart = () => {
             </div>
           </div>
         )}
+        {user && discountInfo.type === 'regular' && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <Gift className="h-5 w-5 text-green-500 mr-2" />
+              <div>
+                <p className="text-green-800 font-medium">💝 Regular Customer Discount</p>
+                <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your order!</p>
+              </div>
+            </div>
+          </div>
+        )}
         {user && discountInfo.type === 'none' && (
           <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex items-center">
@@ -888,9 +904,9 @@ const Cart = () => {
                           First Order Discount ({discountInfo.percentage}%)
                         </>
                       )}
-                      {discountInfo.type === 'none' && (
+                      {discountInfo.type === 'regular' && (
                         <>
-                          Discount
+                          Discount ({discountInfo.percentage}%)
                         </>
                       )}
                     </dt>
