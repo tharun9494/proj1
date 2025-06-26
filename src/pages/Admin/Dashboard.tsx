@@ -447,6 +447,25 @@ const Dashboard = () => {
     });
   };
 
+  // Add helper function to calculate final amount after discount
+  const calculateFinalAmount = useCallback((order: Order) => {
+    const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const deliveryCharges = itemTotal < 500 ? 40 : 0;
+    const subtotal = itemTotal + deliveryCharges;
+    
+    // Apply discount if available
+    const discountAmount = order.discountInfo?.amount || 0;
+    const finalAmount = subtotal - discountAmount;
+    
+    return {
+      itemTotal,
+      deliveryCharges,
+      subtotal,
+      discountAmount,
+      finalAmount: Math.max(0, finalAmount) // Ensure amount doesn't go negative
+    };
+  }, []);
+
   const calculateRevenue = useCallback((orders: Order[]) => {
     console.log('Calculating revenue for orders:', orders.length);
     
@@ -474,22 +493,23 @@ const Dashboard = () => {
       }
       
       const orderDate = order.createdAt.toDate();
-      const amount = Number(order.totalAmount) || 0;
+      // Use the actual amount customer paid (after discount)
+      const { finalAmount } = calculateFinalAmount(order);
 
       if (orderDate >= today) {
-        daily += amount;
+        daily += finalAmount;
         if (order.status === 'completed') {
           dailyCompletedOrders++;
         }
       }
       if (orderDate >= weekAgo) {
-        weekly += amount;
+        weekly += finalAmount;
         if (order.status === 'completed') {
           weeklyCompletedOrders++;
         }
       }
       if (orderDate >= monthAgo) {
-        monthly += amount;
+        monthly += finalAmount;
         if (order.status === 'completed') {
           monthlyCompletedOrders++;
         }
@@ -513,7 +533,7 @@ const Dashboard = () => {
         completedOrders: monthlyCompletedOrders
       }
     });
-  }, []);
+  }, [calculateFinalAmount]);
 
   useEffect(() => {
     console.log('Orders changed, recalculating revenue');
@@ -1098,9 +1118,7 @@ const Dashboard = () => {
         {showTodayOrders && (
           <div className="space-y-4">
             {sortedOrders.map((order, index) => {
-              const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-              const deliveryCharges = itemTotal < 500 ? 40 : 0;
-              const finalTotal = itemTotal + deliveryCharges;
+              const { itemTotal, deliveryCharges, subtotal, discountAmount, finalAmount } = calculateFinalAmount(order);
               const orderTime = order.createdAt.toDate().toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -1130,23 +1148,37 @@ const Dashboard = () => {
                         <div className="flex items-center gap-2 mb-2">
                           <span className="font-medium">{order.userName}</span>
                           <span className="text-sm text-gray-500">{order.userPhone}</span>
+                          {discountAmount > 0 && (
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                              {order.discountInfo?.type === 'first_order' ? (
+                                order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
+                                  ? '₹200 OFF' 
+                                  : '50% OFF'
+                              ) : 
+                                order.discountInfo?.type === 'regular' ? '5% OFF' : 'DISCOUNT'}
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-gray-600">
-                          {order.items.length} items • ₹{finalTotal}
+                          {order.items.length} items • ₹{finalAmount}
                           {deliveryCharges > 0 && (
                             <span className="text-xs text-gray-500 ml-1">
                               (incl. ₹{deliveryCharges} delivery)
                             </span>
                           )}
-                          {order.discountInfo?.amount && order.discountInfo.amount > 0 && (
+                          {discountAmount > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-green-600">
-                                {order.discountInfo?.type === 'first_order' && `First Order Discount (${order.discountInfo.percentage}%)`}
+                                {order.discountInfo?.type === 'first_order' && (
+                                  order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
+                                    ? `First Order Discount (₹200 off)`
+                                    : `First Order Discount (${order.discountInfo.percentage}%)`
+                                )}
                                 {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
                                 {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
                                 {order.discountInfo?.type === 'none' && 'Discount'}
                               </span>
-                              <span className="text-green-600">-₹{order.discountInfo.amount}</span>
+                              <span className="text-green-600 font-medium">-₹{discountAmount}</span>
                             </div>
                           )}
                         </div>
@@ -1213,15 +1245,34 @@ const Dashboard = () => {
                                 <p className="font-medium">₹{item.price * item.quantity}</p>
                               </div>
                             ))}
+                            <div className="p-2 flex justify-between items-center">
+                              <p className="text-gray-500">Items Total</p>
+                              <p className="font-medium">₹{itemTotal}</p>
+                            </div>
                             {deliveryCharges > 0 && (
                               <div className="p-2 flex justify-between items-center">
                                 <p className="text-gray-500">Delivery Charges</p>
                                 <p className="font-medium">₹{deliveryCharges}</p>
                               </div>
                             )}
+                            {discountAmount > 0 && (
+                              <div className="p-2 flex justify-between items-center">
+                                <p className="text-green-600">
+                                  {order.discountInfo?.type === 'first_order' && (
+                                    order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
+                                      ? `First Order Discount (₹200 off)`
+                                      : `First Order Discount (${order.discountInfo.percentage}%)`
+                                  )}
+                                  {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
+                                  {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
+                                  {order.discountInfo?.type === 'none' && 'Discount'}
+                                </p>
+                                <p className="text-green-600 font-medium">-₹{discountAmount}</p>
+                              </div>
+                            )}
                             <div className="p-2 flex justify-between items-center bg-gray-100">
-                              <p className="font-medium">Total</p>
-                              <p className="font-medium">₹{finalTotal}</p>
+                              <p className="font-medium">Total Amount</p>
+                              <p className="font-medium">₹{finalAmount}</p>
                             </div>
                           </div>
                         </div>
@@ -1230,8 +1281,19 @@ const Dashboard = () => {
                         <div>
                           <h5 className="text-xs font-medium text-gray-500 mb-1">Payment Details</h5>
                           <div className="bg-gray-50 p-2 rounded text-sm">
-                            <p>Method: {order.paymentMethod}</p>
-                            <p>Status: <span className={order.paymentStatus === 'success' ? 'text-green-600' : 'text-red-600'}>{order.paymentStatus}</span></p>
+                            <div className="flex justify-between">
+                              <span>Method:</span>
+                              <span className="font-medium">{order.paymentMethod}</span>
+                            </div>
+                            <div className="flex justify-between mt-1">
+                              <span>Status:</span>
+                              <span className={`font-medium ${
+                                order.paymentStatus === 'success' ? 'text-green-600' : 
+                                order.paymentStatus === 'pending' ? 'text-yellow-600' : 'text-red-600'
+                              }`}>
+                                {order.paymentStatus.toUpperCase()}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1288,9 +1350,7 @@ const Dashboard = () => {
                 </div>
                 <div className="divide-y">
                   {dateOrders.map((order, index) => {
-                    const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                    const deliveryCharges = itemTotal < 500 ? 40 : 0;
-                    const finalTotal = itemTotal + deliveryCharges;
+                    const { itemTotal, deliveryCharges, subtotal, discountAmount, finalAmount } = calculateFinalAmount(order);
                     const orderTime = order.createdAt.toDate().toLocaleTimeString('en-US', {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -1327,23 +1387,37 @@ const Dashboard = () => {
                             <div className="flex items-center gap-2 mb-2">
                               <span className="font-medium">{order.userName}</span>
                               <span className="text-sm text-gray-500">{order.userPhone}</span>
+                              {discountAmount > 0 && (
+                                <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                                  {order.discountInfo?.type === 'first_order' ? (
+                                    order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
+                                      ? '₹200 OFF' 
+                                      : '50% OFF'
+                                  ) : 
+                                    order.discountInfo?.type === 'regular' ? '5% OFF' : 'DISCOUNT'}
+                                </span>
+                              )}
                             </div>
                             <div className="text-sm text-gray-600">
-                              {order.items.length} items • ₹{finalTotal}
+                              {order.items.length} items • ₹{finalAmount}
                               {deliveryCharges > 0 && (
                                 <span className="text-xs text-gray-500 ml-1">
                                   (incl. ₹{deliveryCharges} delivery)
                                 </span>
                               )}
-                              {order.discountInfo?.amount && order.discountInfo.amount > 0 && (
+                              {discountAmount > 0 && (
                                 <div className="flex justify-between text-sm">
                                   <span className="text-green-600">
-                                    {order.discountInfo?.type === 'first_order' && `First Order Discount (${order.discountInfo.percentage}%)`}
+                                    {order.discountInfo?.type === 'first_order' && (
+                                      order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
+                                        ? `First Order Discount (₹200 off)`
+                                        : `First Order Discount (${order.discountInfo.percentage}%)`
+                                    )}
                                     {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
                                     {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
                                     {order.discountInfo?.type === 'none' && 'Discount'}
                                   </span>
-                                  <span className="text-green-600">-₹{order.discountInfo.amount}</span>
+                                  <span className="text-green-600 font-medium">-₹{discountAmount}</span>
                                 </div>
                               )}
                             </div>
@@ -1413,9 +1487,24 @@ const Dashboard = () => {
                                       <span>₹{deliveryCharges}</span>
                                     </div>
                                   )}
+                                  {discountAmount > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-green-600">
+                                        {order.discountInfo?.type === 'first_order' && (
+                                          order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
+                                            ? `First Order Discount (₹200 off)`
+                                            : `First Order Discount (${order.discountInfo.percentage}%)`
+                                        )}
+                                        {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
+                                        {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
+                                        {order.discountInfo?.type === 'none' && 'Discount'}
+                                      </span>
+                                      <span className="text-green-600">-₹{discountAmount}</span>
+                                    </div>
+                                  )}
                                   <div className="flex justify-between text-sm font-medium mt-1">
                                     <span>Total Amount</span>
-                                    <span>₹{finalTotal}</span>
+                                    <span>₹{finalAmount}</span>
                                   </div>
                                 </div>
                               </div>
@@ -1453,6 +1542,44 @@ const Dashboard = () => {
       </div>
     );
   };
+
+  // Add this function after the existing useEffect hooks
+  const filterOrders = useCallback((orders: Order[]) => {
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    // Get the first day of current month
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    firstDayOfMonth.setHours(0, 0, 0, 0);
+
+    // Filter today's orders (only from today)
+    const todayOrders = orders.filter(order => {
+      if (!order.createdAt) return false;
+      const orderDate = order.createdAt.toDate();
+      return orderDate >= today && order.status !== 'completed';
+    });
+
+    // Filter completed orders (from start of month until now)
+    const completedOrders = orders.filter(order => {
+      if (!order.createdAt) return false;
+      const orderDate = order.createdAt.toDate();
+      return orderDate >= firstDayOfMonth && order.status === 'completed';
+    });
+
+    // Filter past orders (before today and not completed)
+    const pastOrders = orders.filter(order => {
+      if (!order.createdAt) return false;
+      const orderDate = order.createdAt.toDate();
+      return orderDate < today && order.status !== 'completed';
+    });
+
+    return {
+      today: todayOrders,
+      completed: completedOrders,
+      past: pastOrders
+    };
+  }, []);
 
   // Function to check and update restaurant status based on time
   const checkAndUpdateRestaurantStatus = useCallback(() => {
@@ -1533,44 +1660,6 @@ const Dashboard = () => {
       if (cleanup) cleanup();
     };
   }, [resetTodayOrders]);
-
-  // Add this function after the existing useEffect hooks
-  const filterOrders = useCallback((orders: Order[]) => {
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-
-    // Get the first day of current month
-    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    firstDayOfMonth.setHours(0, 0, 0, 0);
-
-    // Filter today's orders (only from today)
-    const todayOrders = orders.filter(order => {
-      if (!order.createdAt) return false;
-      const orderDate = order.createdAt.toDate();
-      return orderDate >= today && order.status !== 'completed';
-    });
-
-    // Filter completed orders (from start of month until now)
-    const completedOrders = orders.filter(order => {
-      if (!order.createdAt) return false;
-      const orderDate = order.createdAt.toDate();
-      return orderDate >= firstDayOfMonth && order.status === 'completed';
-    });
-
-    // Filter past orders (before today and not completed)
-    const pastOrders = orders.filter(order => {
-      if (!order.createdAt) return false;
-      const orderDate = order.createdAt.toDate();
-      return orderDate < today && order.status !== 'completed';
-    });
-
-    return {
-      today: todayOrders,
-      completed: completedOrders,
-      past: pastOrders
-    };
-  }, []);
 
   // Add back the setRestaurantStatusManual function
   const setRestaurantStatusManual = async (open: boolean) => {

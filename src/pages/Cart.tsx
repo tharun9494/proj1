@@ -98,13 +98,23 @@ const calculateDiscount = async (amount: number, userId: string | null): Promise
   const isFirstOrder = await checkIfFirstOrder(userId);
 
   if (isFirstOrder) {
-    // First order: 50% discount
-    const firstOrderDiscount = Math.round((amount * FIRST_ORDER_DISCOUNT_PERCENTAGE) / 100);
-    return {
-      amount: firstOrderDiscount,
-      type: 'first_order',
-      percentage: FIRST_ORDER_DISCOUNT_PERCENTAGE
-    };
+    // First order discount logic
+    if (amount >= 500) {
+      // For orders ₹500 or more: ₹200 off
+      return {
+        amount: 200,
+        type: 'first_order',
+        percentage: Math.round((200 / amount) * 100) // Calculate percentage for display
+      };
+    } else {
+      // For orders under ₹500: 50% off
+      const firstOrderDiscount = Math.round((amount * FIRST_ORDER_DISCOUNT_PERCENTAGE) / 100);
+      return {
+        amount: firstOrderDiscount,
+        type: 'first_order',
+        percentage: FIRST_ORDER_DISCOUNT_PERCENTAGE
+      };
+    }
   } else {
     // All other orders: 5% discount
     const regularDiscount = Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
@@ -645,7 +655,12 @@ const Cart = () => {
               <Gift className="h-5 w-5 text-green-500 mr-2" />
               <div>
                 <p className="text-green-800 font-medium">🎉 Welcome! First Order Special</p>
-                <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your first order!</p>
+                <p className="text-green-600 text-sm">
+                  {totalAmount >= 500 
+                    ? `You get ₹200 off on your first order!` 
+                    : `You get ${discountInfo.percentage}% off on your first order!`
+                  }
+                </p>
               </div>
             </div>
           </div>
@@ -901,7 +916,10 @@ const Cart = () => {
                       {discountInfo.type === 'first_order' && (
                         <>
                           <Gift className="h-4 w-4 mr-1" />
-                          First Order Discount ({discountInfo.percentage}%)
+                          {totalAmount >= 500 
+                            ? `First Order Discount (₹200 off)` 
+                            : `First Order Discount (${discountInfo.percentage}%)`
+                          }
                         </>
                       )}
                       {discountInfo.type === 'regular' && (
