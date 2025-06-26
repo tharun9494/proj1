@@ -242,7 +242,7 @@ const Orders = () => {
                     const itemTotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                     const deliveryCharges = itemTotal < 500 ? 40 : 0;
                     const discountAmount = order.discountInfo?.amount || 0;
-                    const finalTotal = itemTotal + deliveryCharges;
+                    const finalTotal = itemTotal + deliveryCharges - discountAmount;
 
                     return (
                       <div className="space-y-2">
