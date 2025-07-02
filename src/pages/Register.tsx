@@ -10,8 +10,15 @@ const Register = () => {
     name: '',
     email: '',
     phone: '',
+    alternativePhone: '',
     password: '',
     confirmPassword: '',
+    address: {
+      street: '',
+      city: '',
+      pincode: '',
+      landmark: ''
+    }
   });
   const [errors, setErrors] = useState({
     name: '',
@@ -19,6 +26,12 @@ const Register = () => {
     phone: '',
     password: '',
     confirmPassword: '',
+    address: {
+      street: '',
+      city: '',
+      pincode: '',
+      landmark: ''
+    }
   });
 
   const validateForm = () => {
@@ -29,6 +42,12 @@ const Register = () => {
       phone: '',
       password: '',
       confirmPassword: '',
+      address: {
+        street: '',
+        city: '',
+        pincode: '',
+        landmark: ''
+      }
     };
 
     if (!formData.name.trim()) {
@@ -65,6 +84,19 @@ const Register = () => {
       isValid = false;
     }
 
+    if (!formData.address.street.trim()) {
+      newErrors.address.street = 'Street address is required';
+      isValid = false;
+    }
+    if (!formData.address.city.trim()) {
+      newErrors.address.city = 'City is required';
+      isValid = false;
+    }
+    if (!formData.address.pincode.trim()) {
+      newErrors.address.pincode = 'Pincode is required';
+      isValid = false;
+    }
+
     setErrors(newErrors);
     return isValid;
   };
@@ -73,7 +105,14 @@ const Register = () => {
     e.preventDefault();
     if (validateForm()) {
       try {
-        await register(formData.name, formData.email, formData.phone, formData.password);
+        await register(
+          formData.name,
+          formData.email,
+          formData.phone,
+          formData.password,
+          formData.alternativePhone,
+          formData.address
+        );
       } catch (error) {
         console.error('Registration error:', error);
       }
@@ -183,6 +222,31 @@ const Register = () => {
             </div>
 
             <div>
+              <label htmlFor="alternativePhone" className="block text-sm font-medium text-gray-700">
+                Alternative Phone Number
+              </label>
+              <div className="mt-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Phone className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="alternativePhone"
+                  name="alternativePhone"
+                  type="tel"
+                  value={formData.alternativePhone}
+                  onChange={(e) => setFormData({ ...formData, alternativePhone: e.target.value })}
+                  className={`appearance-none block w-full pl-10 pr-3 py-2 border ${
+                    errors.alternativePhone ? 'border-red-300' : 'border-gray-300'
+                  } rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500`}
+                  placeholder="Enter your alternative phone number"
+                />
+              </div>
+              {errors.alternativePhone && (
+                <p className="mt-2 text-sm text-red-600">{errors.alternativePhone}</p>
+              )}
+            </div>
+
+            <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Password
               </label>
@@ -229,6 +293,106 @@ const Register = () => {
               </div>
               {errors.confirmPassword && (
                 <p className="mt-2 text-sm text-red-600">{errors.confirmPassword}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="street" className="block text-sm font-medium text-gray-700">
+                Street
+              </label>
+              <div className="mt-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="street"
+                  name="street"
+                  type="text"
+                  value={formData.address.street}
+                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, street: e.target.value } })}
+                  className={`appearance-none block w-full pl-10 pr-3 py-2 border ${
+                    errors.address.street ? 'border-red-300' : 'border-gray-300'
+                  } rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500`}
+                  placeholder="Enter your street"
+                />
+              </div>
+              {errors.address.street && (
+                <p className="mt-2 text-sm text-red-600">{errors.address.street}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="city" className="block text-sm font-medium text-gray-700">
+                City
+              </label>
+              <div className="mt-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="city"
+                  name="city"
+                  type="text"
+                  value={formData.address.city}
+                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })}
+                  className={`appearance-none block w-full pl-10 pr-3 py-2 border ${
+                    errors.address.city ? 'border-red-300' : 'border-gray-300'
+                  } rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500`}
+                  placeholder="Enter your city"
+                />
+              </div>
+              {errors.address.city && (
+                <p className="mt-2 text-sm text-red-600">{errors.address.city}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="pincode" className="block text-sm font-medium text-gray-700">
+                Pincode
+              </label>
+              <div className="mt-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="pincode"
+                  name="pincode"
+                  type="text"
+                  value={formData.address.pincode}
+                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, pincode: e.target.value } })}
+                  className={`appearance-none block w-full pl-10 pr-3 py-2 border ${
+                    errors.address.pincode ? 'border-red-300' : 'border-gray-300'
+                  } rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500`}
+                  placeholder="Enter your pincode"
+                />
+              </div>
+              {errors.address.pincode && (
+                <p className="mt-2 text-sm text-red-600">{errors.address.pincode}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="landmark" className="block text-sm font-medium text-gray-700">
+                Landmark
+              </label>
+              <div className="mt-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="landmark"
+                  name="landmark"
+                  type="text"
+                  value={formData.address.landmark}
+                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, landmark: e.target.value } })}
+                  className={`appearance-none block w-full pl-10 pr-3 py-2 border ${
+                    errors.address.landmark ? 'border-red-300' : 'border-gray-300'
+                  } rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500`}
+                  placeholder="Enter your landmark"
+                />
+              </div>
+              {errors.address.landmark && (
+                <p className="mt-2 text-sm text-red-600">{errors.address.landmark}</p>
               )}
             </div>
 

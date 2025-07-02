@@ -17,6 +17,13 @@ interface User {
   name: string;
   email: string | null;
   phone: string;
+  alternativePhone?: string;
+  address?: {
+    street: string;
+    city: string;
+    pincode: string;
+    landmark?: string;
+  };
   isAdmin: boolean;
 }
 
@@ -24,7 +31,14 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, phone: string, password: string) => Promise<void>;
+  register: (
+    name: string,
+    email: string,
+    phone: string,
+    password: string,
+    alternativePhone?: string,
+    address?: { street: string; city: string; pincode: string; landmark?: string }
+  ) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
 }
@@ -80,19 +94,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (name: string, email: string, phone: string, password: string) => {
+  const register = async (
+    name: string,
+    email: string,
+    phone: string,
+    password: string,
+    alternativePhone?: string,
+    address?: { street: string; city: string; pincode: string; landmark?: string }
+  ) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
-      
       await createUserDocument({
         id: userCredential.user.uid,
         name,
         email,
         phone,
+        alternativePhone,
+        address,
         isAdmin: ADMIN_EMAILS.includes(email)
       });
-
       toast.success('Registration successful!');
       navigate('/');
     } catch (error) {
