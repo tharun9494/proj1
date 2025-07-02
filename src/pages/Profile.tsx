@@ -22,6 +22,7 @@ const Profile = () => {
       landmark: ''
     }
   });
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -33,11 +34,10 @@ const Profile = () => {
             setProfileData({
               ...userData,
               address: {
-                street: '',
-                city: '',
-                pincode: '',
-                landmark: '',
-                ...userData.address
+                street: userData.address?.street || '',
+                city: userData.address?.city || '',
+                pincode: userData.address?.pincode || '',
+                landmark: userData.address?.landmark || ''
               }
             });
           }
@@ -54,9 +54,26 @@ const Profile = () => {
     return <Navigate to="/login" />;
   }
 
+  const validateProfile = () => {
+    const newErrors: { [key: string]: string } = {};
+    if (!profileData.name?.trim()) newErrors.name = 'Name is required';
+    if (!profileData.phone?.trim()) newErrors.phone = 'Phone number is required';
+    if (!profileData.alternativePhone?.trim()) newErrors.alternativePhone = 'Alternative phone is required';
+    if (!profileData.address?.street?.trim()) newErrors['address.street'] = 'Street address is required';
+    if (!profileData.address?.city?.trim()) newErrors['address.city'] = 'City is required';
+    if (!profileData.address?.pincode?.trim()) newErrors['address.pincode'] = 'Pincode is required';
+    return newErrors;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) return;
+    const validationErrors = validateProfile();
+    setErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) {
+      toast.error('Please fill all required fields');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -134,6 +151,7 @@ const Profile = () => {
                       disabled={!isEditing}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 disabled:bg-gray-100"
                     />
+                    {errors.name && (<p className="mt-1 text-xs text-red-500">{errors.name}</p>)}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -146,6 +164,7 @@ const Profile = () => {
                         disabled={!isEditing}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 disabled:bg-gray-100"
                       />
+                      {errors.phone && (<p className="mt-1 text-xs text-red-500">{errors.phone}</p>)}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Alternative Phone</label>
@@ -157,6 +176,7 @@ const Profile = () => {
                         disabled={!isEditing}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 disabled:bg-gray-100"
                       />
+                      {errors.alternativePhone && (<p className="mt-1 text-xs text-red-500">{errors.alternativePhone}</p>)}
                     </div>
                   </div>
                 </div>
@@ -177,6 +197,7 @@ const Profile = () => {
                     disabled={!isEditing}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 disabled:bg-gray-100"
                   />
+                  {errors['address.street'] && (<p className="mt-1 text-xs text-red-500">{errors['address.street']}</p>)}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -189,6 +210,7 @@ const Profile = () => {
                       disabled={!isEditing}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 disabled:bg-gray-100"
                     />
+                    {errors['address.city'] && (<p className="mt-1 text-xs text-red-500">{errors['address.city']}</p>)}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Pincode</label>
@@ -200,6 +222,7 @@ const Profile = () => {
                       disabled={!isEditing}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 disabled:bg-gray-100"
                     />
+                    {errors['address.pincode'] && (<p className="mt-1 text-xs text-red-500">{errors['address.pincode']}</p>)}
                   </div>
                 </div>
                 <div>

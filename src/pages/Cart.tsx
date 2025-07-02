@@ -126,6 +126,17 @@ const calculateDiscount = async (amount: number, userId: string | null): Promise
   }
 };
 
+const validateProfileForOrder = (userData: any) => {
+  if (!userData) return false;
+  if (!userData.name?.trim()) return false;
+  if (!userData.phone?.trim()) return false;
+  if (!userData.alternativePhone?.trim()) return false;
+  if (!userData.address?.street?.trim()) return false;
+  if (!userData.address?.city?.trim()) return false;
+  if (!userData.address?.pincode?.trim()) return false;
+  return true;
+};
+
 const Cart = () => {
   const { items, updateQuantity, removeFromCart, totalAmount, totalItems, clearCart } = useCart();
   const { user } = useAuth() as { user: User | null };
@@ -305,6 +316,13 @@ const Cart = () => {
       // Validate cart and user data
       if (!user) {
         toast.error('Please login to place an order');
+        return;
+      }
+
+      // Fetch latest user profile for validation
+      const userData = await getUserData(user.id);
+      if (!validateProfileForOrder(userData)) {
+        toast.error('Please complete your profile (address and alternative number) before placing an order.');
         return;
       }
 
