@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.NODE_ENV === 'development'
 ? '/api/orders'
-: 'https://pittas-backend.onrender.com/api/orders';
+: 'https://pittas-backend.vercel.app/api/orders';
 
 // Create a new order
 export const placeOrder = async (orderData) => {

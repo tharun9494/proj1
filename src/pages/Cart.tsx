@@ -43,13 +43,9 @@ const GST_RATES = {
   SGST: 2.50
 };
 
-const DISCOUNT_PERCENTAGE = 5;  
+const DISCOUNT_PERCENTAGE = 5; // 5% discount for every order
 
 const TOTAL_GST_PERCENTAGE = 5; // Total GST percentage (2.5% CGST + 2.5% SGST)
-
-// Discount constants
-const FIRST_ORDER_DISCOUNT_PERCENTAGE = 50; // 50% discount for first order
-const HIGH_VALUE_ORDER_DISCOUNT = 200; // ₹200 discount for orders above ₹500
 
 // Update delivery fee logic
 const calculateDeliveryFee = (subtotal: number, paymentMethod: 'ONLINE' | 'COD') => {
@@ -67,63 +63,18 @@ const calculateGST = (amount: number) => {
   };
 };
 
-// Check if this is user's first order
-const checkIfFirstOrder = async (userId: string): Promise<boolean> => {
-  try {
-    const ordersRef = collection(db, 'orders');
-    const q = query(
-      ordersRef,
-      where('userId', '==', userId),
-      where('status', 'in', ['pending', 'confirmed', 'completed'])
-    );
-    
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.empty; // If no orders exist, this is the first order
-  } catch (error) {
-    console.error('Error checking first order:', error);
-    return false; // Default to false if there's an error
-  }
-};
-
-// Calculate discount based on order type and amount
-const calculateDiscount = async (amount: number, userId: string | null): Promise<{
+// Calculate discount - simple 5% for every order
+const calculateDiscount = (amount: number): {
   amount: number;
-  type: 'first_order' | 'regular' | 'none';
-  percentage?: number;
-}> => {
-  if (!userId) {
-    return { amount: 0, type: 'none' };
-  }
-
-  const isFirstOrder = await checkIfFirstOrder(userId);
-
-  if (isFirstOrder) {
-    // First order discount logic
-    if (amount >= 500) {
-      // For orders ₹500 or more: ₹200 off
-      return {
-        amount: 200,
-        type: 'first_order',
-        percentage: Math.round((200 / amount) * 100) // Calculate percentage for display
-      };
-    } else {
-      // For orders under ₹500: 50% off
-      const firstOrderDiscount = Math.round((amount * FIRST_ORDER_DISCOUNT_PERCENTAGE) / 100);
-      return {
-        amount: firstOrderDiscount,
-        type: 'first_order',
-        percentage: FIRST_ORDER_DISCOUNT_PERCENTAGE
-      };
-    }
-  } else {
-    // All other orders: 5% discount
-    const regularDiscount = Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
-    return {
-      amount: regularDiscount,
-      type: 'regular',
-      percentage: DISCOUNT_PERCENTAGE
-    };
-  }
+  type: 'regular';
+  percentage: number;
+} => {
+  const discountAmount = Math.round((amount * DISCOUNT_PERCENTAGE) / 100);
+  return {
+    amount: discountAmount,
+    type: 'regular',
+    percentage: DISCOUNT_PERCENTAGE
+  };
 };
 
 const validateProfileForOrder = (userData: any) => {
@@ -157,23 +108,19 @@ const Cart = () => {
   const cartClearedRef = useRef(false);
   const [discountInfo, setDiscountInfo] = useState<{
     amount: number;
-    type: 'first_order' | 'regular' | 'none';
-    percentage?: number;
-  }>({ amount: 0, type: 'none' });
+    type: 'regular';
+    percentage: number;
+  }>({ amount: 0, type: 'regular', percentage: 5 });
 
-  // Calculate discount when user or subtotal changes
+  // Calculate discount when subtotal changes
   useEffect(() => {
-    const updateDiscount = async () => {
-      if (user?.id && totalAmount > 0) {
-        const discount = await calculateDiscount(totalAmount, user.id);
-        setDiscountInfo(discount);
-      } else {
-        setDiscountInfo({ amount: 0, type: 'none' });
-      }
-    };
-
-    updateDiscount();
-  }, [user?.id, totalAmount]);
+    if (totalAmount > 0) {
+      const discount = calculateDiscount(totalAmount);
+      setDiscountInfo(discount);
+    } else {
+      setDiscountInfo({ amount: 0, type: 'regular', percentage: 5 });
+    }
+  }, [totalAmount]);
 
   useEffect(() => {
     const statusRef = doc(db, 'restaurant', 'status');
@@ -667,40 +614,13 @@ const Cart = () => {
         )}
 
         {/* Discount Information Banner */}
-        {user && discountInfo.type === 'first_order' && (
+        {user && discountInfo.amount > 0 && (
           <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex items-center">
               <Gift className="h-5 w-5 text-green-500 mr-2" />
               <div>
-                <p className="text-green-800 font-medium">🎉 Welcome! First Order Special</p>
-                <p className="text-green-600 text-sm">
-                  {totalAmount >= 500 
-                    ? `You get ₹200 off on your first order!` 
-                    : `You get ${discountInfo.percentage}% off on your first order!`
-                  }
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-        {user && discountInfo.type === 'regular' && (
-          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <Gift className="h-5 w-5 text-green-500 mr-2" />
-              <div>
-                <p className="text-green-800 font-medium">💝 Regular Customer Discount</p>
+                <p className="text-green-800 font-medium">💝 Customer Discount</p>
                 <p className="text-green-600 text-sm">You get {discountInfo.percentage}% off on your order!</p>
-              </div>
-            </div>
-          </div>
-        )}
-        {user && discountInfo.type === 'none' && (
-          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <Gift className="h-5 w-5 text-green-500 mr-2" />
-              <div>
-                <p className="text-green-800 font-medium">No discount available</p>
-                <p className="text-green-600 text-sm">Regular price applies for this order.</p>
               </div>
             </div>
           </div>
@@ -931,20 +851,8 @@ const Cart = () => {
                   {/* Discount Section */}
                   <div className="py-2 md:py-4 flex items-center justify-between">
                     <dt className="text-xs md:text-sm text-green-600 flex items-center">
-                      {discountInfo.type === 'first_order' && (
-                        <>
-                          <Gift className="h-4 w-4 mr-1" />
-                          {totalAmount >= 500 
-                            ? `First Order Discount (₹200 off)` 
-                            : `First Order Discount (${discountInfo.percentage}%)`
-                          }
-                        </>
-                      )}
-                      {discountInfo.type === 'regular' && (
-                        <>
-                          Discount ({discountInfo.percentage}%)
-                        </>
-                      )}
+                      <Gift className="h-4 w-4 mr-1" />
+                      Discount ({discountInfo.percentage}%)
                     </dt>
                     <dd className="text-xs md:text-sm font-medium text-green-600">
                       {discountAmount > 0 ? `-₹${discountAmount}` : '₹0'}

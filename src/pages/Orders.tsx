@@ -33,9 +33,9 @@ interface Order {
     landmark?: string;
   };
   discountInfo?: {
-    type: 'first_order' | 'high_value' | 'regular' | 'none';
+    type: 'regular';
     amount: number;
-    percentage?: number;
+    percentage: number;
   };
 }
 
@@ -260,12 +260,7 @@ const Orders = () => {
                           <div className="flex justify-between">
                             <p className="text-sm text-green-600 flex items-center">
                               <Gift className="h-3 w-3 mr-1" />
-                              {order.discountInfo?.type === 'first_order' && (
-                                itemTotal >= 500 
-                                  ? `First Order Discount (₹200 off)` 
-                                  : `First Order Discount (${order.discountInfo.percentage}%)`
-                              )}
-                              {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
+                              Discount ({order.discountInfo?.percentage}%)
                             </p>
                             <p className="text-sm text-green-600">-₹{discountAmount}</p>
                           </div>

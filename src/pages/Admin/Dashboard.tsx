@@ -91,9 +91,9 @@ interface Order {
   updatedAt?: any;
   completedAt?: any;
   discountInfo?: {
-    type: 'first_order' | 'high_value' | 'regular' | 'none';
+    type: 'regular';
     amount: number;
-    percentage?: number;
+    percentage: number;
   };
 }
 
@@ -1150,12 +1150,7 @@ const Dashboard = () => {
                           <span className="text-sm text-gray-500">{order.userPhone}</span>
                           {discountAmount > 0 && (
                             <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                              {order.discountInfo?.type === 'first_order' ? (
-                                order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
-                                  ? '₹200 OFF' 
-                                  : '50% OFF'
-                              ) : 
-                                order.discountInfo?.type === 'regular' ? '5% OFF' : 'DISCOUNT'}
+                              {order.discountInfo?.type === 'regular' ? '5% OFF' : 'NO DISCOUNT'}
                             </span>
                           )}
                         </div>
@@ -1169,14 +1164,7 @@ const Dashboard = () => {
                           {discountAmount > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-green-600">
-                                {order.discountInfo?.type === 'first_order' && (
-                                  order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
-                                    ? `First Order Discount (₹200 off)`
-                                    : `First Order Discount (${order.discountInfo.percentage}%)`
-                                )}
-                                {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
                                 {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
-                                {order.discountInfo?.type === 'none' && 'Discount'}
                               </span>
                               <span className="text-green-600 font-medium">-₹{discountAmount}</span>
                             </div>
@@ -1258,14 +1246,7 @@ const Dashboard = () => {
                             {discountAmount > 0 && (
                               <div className="p-2 flex justify-between items-center">
                                 <p className="text-green-600">
-                                  {order.discountInfo?.type === 'first_order' && (
-                                    order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
-                                      ? `First Order Discount (₹200 off)`
-                                      : `First Order Discount (${order.discountInfo.percentage}%)`
-                                  )}
-                                  {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
-                                  {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
-                                  {order.discountInfo?.type === 'none' && 'Discount'}
+                                {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
                                 </p>
                                 <p className="text-green-600 font-medium">-₹{discountAmount}</p>
                               </div>
@@ -1389,12 +1370,7 @@ const Dashboard = () => {
                               <span className="text-sm text-gray-500">{order.userPhone}</span>
                               {discountAmount > 0 && (
                                 <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                                  {order.discountInfo?.type === 'first_order' ? (
-                                    order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
-                                      ? '₹200 OFF' 
-                                      : '50% OFF'
-                                  ) : 
-                                    order.discountInfo?.type === 'regular' ? '5% OFF' : 'DISCOUNT'}
+                                  {order.discountInfo?.type === 'regular' ? '5% OFF' : 'NO DISCOUNT'}
                                 </span>
                               )}
                             </div>
@@ -1408,14 +1384,7 @@ const Dashboard = () => {
                               {discountAmount > 0 && (
                                 <div className="flex justify-between text-sm">
                                   <span className="text-green-600">
-                                    {order.discountInfo?.type === 'first_order' && (
-                                      order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
-                                        ? `First Order Discount (₹200 off)`
-                                        : `First Order Discount (${order.discountInfo.percentage}%)`
-                                    )}
-                                    {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
-                                    {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
-                                    {order.discountInfo?.type === 'none' && 'Discount'}
+                                {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
                                   </span>
                                   <span className="text-green-600 font-medium">-₹{discountAmount}</span>
                                 </div>
@@ -1490,14 +1459,7 @@ const Dashboard = () => {
                                   {discountAmount > 0 && (
                                     <div className="flex justify-between text-sm">
                                       <span className="text-green-600">
-                                        {order.discountInfo?.type === 'first_order' && (
-                                          order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) >= 500 
-                                            ? `First Order Discount (₹200 off)`
-                                            : `First Order Discount (${order.discountInfo.percentage}%)`
-                                        )}
-                                        {order.discountInfo?.type === 'high_value' && 'High Value Discount'}
-                                        {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
-                                        {order.discountInfo?.type === 'none' && 'Discount'}
+                                {order.discountInfo?.type === 'regular' && `Discount (${order.discountInfo.percentage}%)`}
                                       </span>
                                       <span className="text-green-600">-₹{discountAmount}</span>
                                     </div>

@@ -3,7 +3,7 @@ import axios, { AxiosError } from 'axios';
 // Use environment variable for API URL, fallback to default
 const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV 
   ? '/api/orders'
-  : 'https://pittas-backend.onrender.com/api/orders');
+  : 'https://pittas-backend.vercel.app/api/orders');
 
 // Create axios instance with default config
 const api = axios.create({
